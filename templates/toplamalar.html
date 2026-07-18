@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}Toplamalar - Depo Takip Sistemi{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">📦 Toplamalar</h1>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <form id="toplamForm">
+            <div class="input-group">
+                <input type="text" class="form-control" id="toplamAd" placeholder="Toplama adı..." required>
+                <button class="btn btn-success" type="submit">➕ Ekle</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="row">
+    {% for toplama in toplamalar %}
+    <div class="col-md-4 mb-3">
+        <div class="card">
+            <div class="card-body">
+                <h5>{{ toplama.ad }}</h5>
+                <button class="btn btn-sm btn-danger deleteBtn" data-id="{{ toplama.id }}">Sil</button>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.getElementById('toplamForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const ad = document.getElementById('toplamAd').value;
+        try {
+            const response = await fetch('/toplamalar/api/ekle', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ad: ad })
+            });
+            const result = await response.json();
+            if (result.basarili) location.reload();
+        } catch (e) {}
+    });
+    
+    document.querySelectorAll('.deleteBtn').forEach(btn => {
+        btn.addEventListener('click', async function() {
+            if (confirm('Emin misiniz?')) {
+                try {
+                    const response = await fetch(`/toplamalar/api/sil/${this.dataset.id}`, { method: 'DELETE' });
+                    const result = await response.json();
+                    if (result.basarili) location.reload();
+                } catch (e) {}
+            }
+        });
+    });
+</script>
+{% endblock %}

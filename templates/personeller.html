@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block title %}Personeller - Depo Takip Sistemi{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">👥 Personeller</h1>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <form id="personelForm">
+            <div class="input-group">
+                <input type="text" class="form-control" id="personelAd" placeholder="Personel adı..." required>
+                <button class="btn btn-success" type="submit">➕ Ekle</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="row">
+    {% for personel in personeller %}
+    <div class="col-md-4 mb-3">
+        <div class="card">
+            <div class="card-body">
+                <h5>{{ personel.ad }}</h5>
+                <button class="btn btn-sm btn-danger deleteBtn" data-id="{{ personel.id }}">Sil</button>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.getElementById('personelForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const ad = document.getElementById('personelAd').value;
+        try {
+            const response = await fetch('/personeller/api/ekle', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ad: ad })
+            });
+            const result = await response.json();
+            if (result.basarili) {
+                location.reload();
+            } else {
+                showAlert('danger', '✗ ' + result.mesaj);
+            }
+        } catch (e) {
+            showAlert('danger', '✗ Hata');
+        }
+    });
+    
+    document.querySelectorAll('.deleteBtn').forEach(btn => {
+        btn.addEventListener('click', async function() {
+            if (confirm('Emin misiniz?')) {
+                try {
+                    const response = await fetch(`/personeller/api/sil/${this.dataset.id}`, { method: 'DELETE' });
+                    const result = await response.json();
+                    if (result.basarili) location.reload();
+                } catch (e) {}
+            }
+        });
+    });
+</script>
+{% endblock %}

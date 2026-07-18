@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+
+{% block title %}Ana Sayfa - Depo Takip Sistemi{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8 mx-auto">
+        <div class="card shadow-lg">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0">📝 Yeni Kayıt Gir</h4>
+            </div>
+            <div class="card-body p-4">
+                <form id="kayitForm">
+                    <!-- Tarih -->
+                    <div class="mb-3">
+                        <label for="tarih" class="form-label fw-bold">Tarih</label>
+                        <input type="date" class="form-control form-control-lg" id="tarih" name="tarih" required>
+                    </div>
+
+                    <!-- Personel -->
+                    <div class="mb-3">
+                        <label for="personel" class="form-label fw-bold">Personel</label>
+                        <select class="form-select form-select-lg" id="personel" name="personel_id" required>
+                            <option value="">-- Personel Seçin --</option>
+                            {% for personel in personeller %}
+                            <option value="{{ personel.id }}">{{ personel.ad }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <!-- Toplama -->
+                    <div class="mb-3">
+                        <label for="toplama" class="form-label fw-bold">Toplama</label>
+                        <select class="form-select form-select-lg" id="toplama" name="toplama_id" required>
+                            <option value="">-- Toplama Seçin --</option>
+                            {% for toplama in toplamalar %}
+                            <option value="{{ toplama.id }}">{{ toplama.ad }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <!-- Trendyol Sipariş -->
+                    <div class="mb-3">
+                        <label for="trendyol_siparis" class="form-label fw-bold">Trendyol Sipariş</label>
+                        <input type="number" step="0.01" class="form-control form-control-lg" 
+                               id="trendyol_siparis" name="trendyol_siparis" placeholder="0">
+                    </div>
+
+                    <!-- Trendyol Fatura -->
+                    <div class="mb-3">
+                        <label for="trendyol_fatura" class="form-label fw-bold">Trendyol Fatura</label>
+                        <input type="number" step="0.01" class="form-control form-control-lg" 
+                               id="trendyol_fatura" name="trendyol_fatura" placeholder="0">
+                    </div>
+
+                    <!-- Diğer Pazar Yerleri -->
+                    <div class="mb-3">
+                        <label for="diger_pazar" class="form-label fw-bold">Diğer Pazar Yerleri</label>
+                        <input type="number" step="0.01" class="form-control form-control-lg" 
+                               id="diger_pazar" name="diger_pazar" placeholder="0">
+                    </div>
+
+                    <!-- Not -->
+                    <div class="mb-4">
+                        <label for="not" class="form-label fw-bold">Not</label>
+                        <textarea class="form-control form-control-lg" id="not" name="not" 
+                                  rows="3" placeholder="İsteğe bağlı..."></textarea>
+                    </div>
+
+                    <!-- Kaydet Butonu -->
+                    <button type="submit" class="btn btn-primary btn-lg w-100">
+                        💾 Kaydet
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Tarih alanını bugünle doldur
+        const tarihInput = document.getElementById('tarih');
+        const bugün = '{{ bugün }}';
+        tarihInput.value = bugün;
+
+        // Form gönderimi
+        document.getElementById('kayitForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            const formData = {
+                tarih: document.getElementById('tarih').value,
+                personel_id: document.getElementById('personel').value,
+                toplama_id: document.getElementById('toplama').value,
+                trendyol_siparis: document.getElementById('trendyol_siparis').value,
+                trendyol_fatura: document.getElementById('trendyol_fatura').value,
+                diger_pazar: document.getElementById('diger_pazar').value,
+                not: document.getElementById('not').value
+            };
+
+            try {
+                const response = await fetch('/api/kayit-ekle', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(formData)
+                });
+
+                const result = await response.json();
+
+                if (result.basarili) {
+                    showAlert('success', '✓ ' + result.mesaj);
+                    document.getElementById('kayitForm').reset();
+                    tarihInput.value = bugün;
+                } else {
+                    showAlert('danger', '✗ ' + result.mesaj);
+                }
+            } catch (error) {
+                showAlert('danger', '✗ Hata: ' + error.message);
+            }
+        });
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}Kayıtlar - Depo Takip Sistemi{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">📋 Kayıtlar</h1>
+
+<!-- Kayıtlar Tablosu -->
+<div class="table-responsive">
+    <table class="table table-striped table-hover">
+        <thead class="table-primary">
+            <tr>
+                <th>Tarih</th>
+                <th>Personel</th>
+                <th>Toplama</th>
+                <th>Trendyol Sipariş</th>
+                <th>Trendyol Fatura</th>
+                <th>Diğer Pazar</th>
+                <th>Not</th>
+                <th>İşlemler</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for kayit in kayitlar %}
+            <tr>
+                <td>{{ kayit.tarih }}</td>
+                <td>{{ kayit.personel.ad }}</td>
+                <td>{{ kayit.toplama.ad }}</td>
+                <td>{{ kayit.trendyol_siparis }}</td>
+                <td>{{ kayit.trendyol_fatura }}</td>
+                <td>{{ kayit.diger_pazar }}</td>
+                <td>{{ kayit.not_alan }}</td>
+                <td>
+                    <button class="btn btn-sm btn-danger deleteBtn" data-id="{{ kayit.id }}">🗑️ Sil</button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.querySelectorAll('.deleteBtn').forEach(btn => {
+        btn.addEventListener('click', async function() {
+            const id = this.dataset.id;
+            if (confirm('Emin misiniz?')) {
+                try {
+                    const response = await fetch(`/kayitlar/api/sil/${id}`, { method: 'DELETE' });
+                    const result = await response.json();
+                    if (result.basarili) {
+                        showAlert('success', '✓ ' + result.mesaj);
+                        location.reload();
+                    }
+                } catch (e) {
+                    showAlert('danger', '✗ Hata');
+                }
+            }
+        });
+    });
+</script>
+{% endblock %}
