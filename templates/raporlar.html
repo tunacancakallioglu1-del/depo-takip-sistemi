@@ -1,59 +1,19 @@
-{% extends "base.html" %}
-
-{% block title %}Raporlar - Depo Takip Sistemi{% endblock %}
-
+{% extends 'base.html' %}
+{% block title %}Raporlar{% endblock %}
 {% block content %}
-<h1 class="mb-4">📊 Raporlar</h1>
-
-<div class="card mb-4">
-    <div class="card-header bg-info text-white">
-        <h5 class="mb-0">Excel Raporu Oluştur</h5>
-    </div>
-    <div class="card-body">
-        <form id="raporForm">
-            <div class="row">
-                <div class="col-md-5">
-                    <label class="form-label">Başlangıç Tarihi</label>
-                    <input type="date" class="form-control" id="tarihBaslangic" required>
-                </div>
-                <div class="col-md-5">
-                    <label class="form-label">Bitiş Tarihi</label>
-                    <input type="date" class="form-control" id="tarihBitis" required>
-                </div>
-                <div class="col-md-2">
-                    <label>&nbsp;</label>
-                    <button type="submit" class="btn btn-info w-100">📥 Oluştur</button>
-                </div>
-            </div>
-        </form>
+<h3>Raporlama Sistemi</h3>
+<div class="row g-3">
+    <div class="col-md-6">
+        <div class="card"><div class="card-body">
+            <h5>API Raporları</h5>
+            <ul>
+                <li><code>/raporlar/api/personel</code></li>
+                <li><code>/raporlar/api/toplama</code></li>
+                <li><code>/raporlar/api/urun</code></li>
+                <li><code>/raporlar/api/iade-analiz</code></li>
+            </ul>
+            <p>Excel Export: <code>/raporlar/api/export?tip=personel|toplama|urun|iade</code></p>
+        </div></div>
     </div>
 </div>
-
-{% endblock %}
-
-{% block extra_js %}
-<script>
-    document.getElementById('raporForm').addEventListener('submit', async function(e) {
-        e.preventDefault();
-        const tarihBaslangic = document.getElementById('tarihBaslangic').value;
-        const tarihBitis = document.getElementById('tarihBitis').value;
-        
-        try {
-            const response = await fetch('/raporlar/api/excel-olustur', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ tarih_baslangic: tarihBaslangic, tarih_bitis: tarihBitis })
-            });
-            const result = await response.json();
-            if (result.basarili) {
-                showAlert('success', '✓ Excel hazırlandı!');
-                window.location.href = `/raporlar/download/${result.dosya}`;
-            } else {
-                showAlert('danger', '✗ ' + result.mesaj);
-            }
-        } catch (e) {
-            showAlert('danger', '✗ Hata');
-        }
-    });
-</script>
 {% endblock %}

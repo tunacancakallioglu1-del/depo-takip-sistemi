@@ -1,0 +1,12 @@
+{% extends 'base.html' %}
+{% block title %}İade Yönetimi{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h3>İade Yönetimi</h3>
+    <a class="btn btn-outline-primary" href="/iadeler/api/template">İade Şablonu</a>
+</div>
+<ul>
+    <li>Yükleme: <code>POST /iadeler/api/excel-yukle</code></li>
+    <li>Liste: <code>GET /iadeler/api/list</code></li>
+</ul>
+{% endblock %}

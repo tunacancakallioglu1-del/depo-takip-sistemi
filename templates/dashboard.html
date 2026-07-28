@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<div class="row g-3 mb-4">
+    <div class="col-md-2"><div class="card"><div class="card-body"><h6>Günlük Sipariş</h6><h3>{{ metrics.daily_orders }}</h3></div></div></div>
+    <div class="col-md-2"><div class="card"><div class="card-body"><h6>Günlük Ürün</h6><h3>{{ metrics.daily_items }}</h3></div></div></div>
+    <div class="col-md-2"><div class="card"><div class="card-body"><h6>Aktif Personel</h6><h3>{{ metrics.active_personnel }}</h3></div></div></div>
+    <div class="col-md-2"><div class="card"><div class="card-body"><h6>Tanımsız Ürün</h6><h3>{{ metrics.undefined_products }}</h3></div></div></div>
+    <div class="col-md-2"><div class="card"><div class="card-body"><h6>Tanımsız Beden</h6><h3>{{ metrics.undefined_sizes }}</h3></div></div></div>
+    <div class="col-md-2"><div class="card"><div class="card-body"><h6>İade Oranı</h6><h3>%{{ metrics.return_rate }}</h3></div></div></div>
+</div>
+<div class="card">
+    <div class="card-body">
+        <h5>Son 7 Gün Sipariş Grafiği</h5>
+        <canvas id="ordersChart" height="80"></canvas>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+const labels = {{ last_7_days | map(attribute='date') | list | tojson }};
+const values = {{ last_7_days | map(attribute='orders') | list | tojson }};
+new Chart(document.getElementById('ordersChart'), {
+    type: 'line',
+    data: {labels: labels, datasets: [{label: 'Sipariş', data: values, borderColor: '#0d6efd', tension: 0.4}]}
+});
+</script>
+{% endblock %}

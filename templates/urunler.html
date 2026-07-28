@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block title %}Ürün Yönetimi{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h3>Ürün Yönetimi</h3>
+    <div>
+        <a class="btn btn-outline-primary" href="/urunler/api/template">Excel Şablonu</a>
+    </div>
+</div>
+<p>Ürün CRUD ve Excel toplu yükleme endpointleri hazırdır.</p>
+<ul>
+    <li>Liste: <code>GET /urunler/api/list</code></li>
+    <li>Ekle: <code>POST /urunler/api/ekle</code></li>
+    <li>Excel Yükle: <code>POST /urunler/api/excel-yukle</code></li>
+</ul>
+{% endblock %}
