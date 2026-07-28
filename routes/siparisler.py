@@ -208,9 +208,9 @@ def kontrol_edildi(upload_id):
             'senkronizasyon': sonuc,
         })
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
-        return jsonify({'basarili': False, 'mesaj': f'Hata: {str(e)}'}), 500
+        return jsonify({'basarili': False, 'mesaj': 'İşlem sırasında bir hata oluştu.'}), 500
 
 
 @siparisler_bp.route('/api/list')

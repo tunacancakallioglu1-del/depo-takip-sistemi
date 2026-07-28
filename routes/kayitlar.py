@@ -293,9 +293,9 @@ def senkronize_et():
             'guncellendi': guncellendi,
         })
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
-        return jsonify({'basarili': False, 'mesaj': f'Hata: {str(e)}'}), 500
+        return jsonify({'basarili': False, 'mesaj': 'Senkronizasyon sırasında bir hata oluştu.'}), 500
 
 
 def _senkronize_upload(upload_id):
