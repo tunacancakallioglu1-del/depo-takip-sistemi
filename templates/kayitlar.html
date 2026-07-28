@@ -201,6 +201,7 @@
 {% block extra_js %}
 <script>
 initUploadZone('uploadZone', 'excelFile');
+let kayitMap = {};
 
 async function otomatikSenkronize() {
   setLoading(true);
@@ -224,12 +225,15 @@ async function loadKayitlar() {
   if (!data?.basarili) return;
 
   const tbody = document.getElementById('kayitlarBody');
+  kayitMap = {};
   if (!data.kayitlar.length) {
     tbody.innerHTML = '<tr><td colspan="9" class="text-center py-4 text-muted">Henüz kayıt yok</td></tr>';
     return;
   }
 
-  tbody.innerHTML = data.kayitlar.map(k => `
+  tbody.innerHTML = data.kayitlar.map(k => {
+    kayitMap[k.id] = k;
+    return `
     <tr>
       <td>${k.tarih}</td>
       <td>${k.personel}</td>
@@ -240,14 +244,16 @@ async function loadKayitlar() {
       <td><strong>${(Number(k.trendyol_siparis || 0) + Number(k.trendyol_fatura || 0) + Number(k.diger_pazar || 0)).toFixed(0)}</strong></td>
       <td>${k.not || ''}</td>
       <td>
-        <button class="btn btn-sm btn-warning" onclick='openDuzenle(${JSON.stringify(k)})'>✏️</button>
+        <button class="btn btn-sm btn-warning" onclick="openDuzenle(${k.id})">✏️</button>
         <button class="btn btn-sm btn-danger" onclick="kayitSil(${k.id})">🗑️</button>
       </td>
     </tr>
-  `).join('');
+  `}).join('');
 }
 
-function openDuzenle(k) {
+function openDuzenle(id) {
+  const k = kayitMap[id];
+  if (!k) return;
   document.getElementById('dId').value = k.id;
   const parts = (k.tarih || '').split('.');
   document.getElementById('dTarih').value = parts.length === 3 ? `${parts[2]}-${parts[1]}-${parts[0]}` : '';
