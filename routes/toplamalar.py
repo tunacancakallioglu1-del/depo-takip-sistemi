@@ -162,8 +162,8 @@ def toplama_excel_yukle(toplama_id):
 
     try:
         headers, rows = load_excel_rows(file)
-    except Exception as e:
-        return jsonify({'basarili': False, 'mesaj': f'Excel okuma hatası: {str(e)}'}), 400
+    except Exception:
+        return jsonify({'basarili': False, 'mesaj': 'Excel okunamadı. Dosya formatını kontrol edin.'}), 400
 
     expected = ['Urun Kodu', 'Marka', 'Aciklama', 'Beden Ayrimi', 'Bedenler']
     if headers != expected:
@@ -210,8 +210,8 @@ def toplama_excel_yukle(toplama_id):
                 db.session.add(Size(product_id=product.id, beden=b, toplama_id=toplama_id))
 
             basarili += 1
-        except Exception as ex:
-            hatalar.append({'satir': idx, 'hata': str(ex)})
+        except Exception:
+            hatalar.append({'satir': idx, 'hata': 'Satır işlenemedi'})
 
     log_audit('excel_toplu_yukleme', 'products', None, yeni_deger={'toplama_id': toplama_id, 'basarili': basarili})
     db.session.commit()

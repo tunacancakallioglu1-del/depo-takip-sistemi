@@ -92,8 +92,8 @@ def api_guncelle(id):
         log_audit('update', 'kayitlar', id, eski_deger=eski, yeni_deger=Kayit.query.get(id).to_dict())
         return jsonify(sonuc)
 
-    except Exception as e:
-        return jsonify({'basarili': False, 'mesaj': f'Hata: {str(e)}'}), 500
+    except Exception:
+        return jsonify({'basarili': False, 'mesaj': 'İşlem sırasında bir hata oluştu.'}), 500
 
 
 @kayitlar_bp.route('/api/sil/<int:id>', methods=['DELETE'])
@@ -137,8 +137,8 @@ def excel_yukle():
 
     try:
         headers, rows = load_excel_rows(file)
-    except Exception as e:
-        return jsonify({'basarili': False, 'mesaj': f'Excel okuma hatası: {str(e)}'}), 400
+    except Exception:
+        return jsonify({'basarili': False, 'mesaj': 'Excel okunamadı. Dosya formatını kontrol edin.'}), 400
 
     if headers != expected_headers:
         return jsonify({
@@ -189,8 +189,8 @@ def excel_yukle():
                 not_alan=str(row.get('Not', '') or ''),
             )
             basarili += 1
-        except Exception as ex:
-            hatalar.append({'satir': idx, 'hata': f'Satır işlenemedi: {str(ex)}'})
+        except Exception:
+            hatalar.append({'satir': idx, 'hata': 'Satır işlenemedi'})
 
     log_audit('excel_toplu_yukleme', 'kayitlar', None, yeni_deger={'basarili': basarili, 'hatali': len(hatalar)})
 

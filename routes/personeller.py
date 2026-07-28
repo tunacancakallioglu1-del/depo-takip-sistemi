@@ -68,8 +68,8 @@ def api_guncelle(id):
         personel.ad = ad
         db.session.commit()
         return jsonify({'basarili': True, 'mesaj': 'Personel güncellendi!'})
-    except Exception as e:
-        return jsonify({'basarili': False, 'mesaj': f'Hata: {str(e)}'}), 500
+    except Exception:
+        return jsonify({'basarili': False, 'mesaj': 'İşlem sırasında bir hata oluştu.'}), 500
 
 
 @personeller_bp.route('/api/sil/<int:id>', methods=['DELETE'])
