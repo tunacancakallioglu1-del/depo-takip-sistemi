@@ -3,19 +3,47 @@
 {% block content %}
 
 <div class="page-header">
-  <h1 class="page-title">↩️ İade Yönetimi</h1>
+  <h1 class="page-title">↩️ İade Yönetimi (Günlük Ekleme)</h1>
   <div class="d-flex gap-2 flex-wrap">
     <a href="/iadeler/api/template" class="btn btn-success btn-sm">📥 Şablon İndir</a>
     <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#iadeExcelModal">📤 Excel Yükle</button>
+    <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#iadeManualModal">➕ Günlük Manuel Ekle</button>
     <button class="btn btn-outline-secondary btn-sm" onclick="loadGecmis()">📂 Geçmiş</button>
     <button class="btn btn-outline-info btn-sm" onclick="showAnalizler()">📊 Analizler</button>
   </div>
 </div>
 
-<!-- Upload Result -->
 <div id="iadeUploadResult" class="mb-3"></div>
 
-<!-- Table -->
+<div class="card mb-3">
+  <div class="card-body py-2">
+    <div class="row g-2 align-items-end">
+      <div class="col-md-3">
+        <label class="form-label">Toplama</label>
+        <select class="form-select form-select-sm" id="filterToplama">
+          <option value="">Tümü</option>
+          {% for t in toplamalar %}<option value="{{ t.id }}">{{ t.ad }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Beden</label>
+        <input type="text" class="form-control form-control-sm" id="filterBeden" placeholder="S, M, 38...">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Adet Tipi</label>
+        <select class="form-select form-select-sm" id="filterAdetTipi">
+          <option value="">Tümü</option>
+          <option value="tek">1 Adet</option>
+          <option value="cok">2+ Adet</option>
+        </select>
+      </div>
+      <div class="col-md-3">
+        <button class="btn btn-primary btn-sm w-100" onclick="loadIadeler(1)">🔍 Filtrele</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="card mb-3">
   <div class="card-body p-0">
     <div class="table-responsive">
@@ -30,11 +58,13 @@
             <th>Adet</th>
             <th>İade Sebebi</th>
             <th>Toplama</th>
+            <th>Kontrol</th>
+            <th>Hata Sebebi</th>
             <th>İşlemler</th>
           </tr>
         </thead>
         <tbody id="iadeBody">
-          <tr><td colspan="9" class="text-center py-4 text-muted">Yükleniyor...</td></tr>
+          <tr><td colspan="11" class="text-center py-4 text-muted">Yükleniyor...</td></tr>
         </tbody>
       </table>
     </div>
@@ -42,18 +72,12 @@
   </div>
 </div>
 
-<!-- ── Excel Yükle Modal ── -->
 <div class="modal fade" id="iadeExcelModal" tabindex="-1">
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title">📤 İade Excel Yükle</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
+      <div class="modal-header"><h5 class="modal-title">📤 İade Excel Yükle</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
       <div class="modal-body">
-        <div class="alert alert-info small">
-          <strong>Şablon sütunları:</strong> Siparis No | Tarih | Urun Kodu | Beden | Adet | Sebep
-        </div>
+        <div class="alert alert-info small"><strong>Şablon:</strong> Siparis No | Tarih | Urun Kodu | Beden | Adet | Sebep</div>
         <div class="upload-zone" id="iadeUploadZone">
           <div class="upload-zone-icon">📂</div>
           <p class="fw-semibold mb-1">Excel dosyasını sürükleyin veya tıklayın</p>
@@ -70,29 +94,38 @@
   </div>
 </div>
 
-<!-- ── Düzenle Modal ── -->
+<div class="modal fade" id="iadeManualModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title">➕ Günlük İade Ekle</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <div class="row g-3">
+          <div class="col-md-6"><label class="form-label">Sipariş No *</label><input id="mSiparis" class="form-control"></div>
+          <div class="col-md-6"><label class="form-label">Ürün Kodu *</label><input id="mUrunKod" class="form-control"></div>
+          <div class="col-md-6"><label class="form-label">Tarih</label><input id="mTarih" type="date" class="form-control"></div>
+          <div class="col-md-3"><label class="form-label">Beden</label><input id="mBeden" class="form-control"></div>
+          <div class="col-md-3"><label class="form-label">Adet *</label><input id="mAdet" type="number" min="1" value="1" class="form-control"></div>
+          <div class="col-12"><label class="form-label">İade Sebebi</label><input id="mSebep" class="form-control"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+        <button type="button" class="btn btn-primary" onclick="manualIadeEkle()">💾 Kaydet</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="modal fade" id="iadeDuzenleModal" tabindex="-1">
   <div class="modal-dialog">
     <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title">✏️ İade Düzenle</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
+      <div class="modal-header"><h5 class="modal-title">✏️ İade Düzenle</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
       <div class="modal-body">
         <input type="hidden" id="iadeDuzenleId">
         <div class="row g-3">
-          <div class="col-md-4">
-            <label class="form-label">Beden</label>
-            <input type="text" class="form-control" id="iadeDuzenleBeden">
-          </div>
-          <div class="col-md-4">
-            <label class="form-label">Adet</label>
-            <input type="number" class="form-control" id="iadeDuzenleAdet" min="1">
-          </div>
-          <div class="col-md-4">
-            <label class="form-label">İade Sebebi</label>
-            <input type="text" class="form-control" id="iadeDuzenleSebep">
-          </div>
+          <div class="col-md-4"><label class="form-label">Beden</label><input type="text" class="form-control" id="iadeDuzenleBeden"></div>
+          <div class="col-md-4"><label class="form-label">Adet</label><input type="number" class="form-control" id="iadeDuzenleAdet" min="1"></div>
+          <div class="col-md-4"><label class="form-label">İade Sebebi</label><input type="text" class="form-control" id="iadeDuzenleSebep"></div>
         </div>
       </div>
       <div class="modal-footer">
@@ -103,52 +136,51 @@
   </div>
 </div>
 
-<!-- ── Analizler Modal ── -->
+<div class="modal fade" id="kontrolModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title">✅ Kontrol Durumu</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <input type="hidden" id="kontrolIadeId">
+        <div class="mb-3">
+          <label class="form-label">Durum</label>
+          <select class="form-select" id="kontrolDurum">
+            <option value="Kontrol Edilmedi">Kontrol Edilmedi</option>
+            <option value="Kontrol Edildi">Kontrol Edildi</option>
+          </select>
+        </div>
+        <div>
+          <label class="form-label">Hata Sebebi</label>
+          <textarea class="form-control" id="kontrolHataSebebi" rows="3" placeholder="Sorun varsa yazın..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+        <button type="button" class="btn btn-primary" onclick="kaydetKontrolDurumu()">💾 Kaydet</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="modal fade" id="analizlerModal" tabindex="-1">
   <div class="modal-dialog modal-xl">
     <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title">📊 İade Analizleri</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
+      <div class="modal-header"><h5 class="modal-title">📊 İade Analizleri</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
       <div class="modal-body" id="analizlerBody">
         <div class="row g-3">
-          <div class="col-md-6">
-            <div class="card">
-              <div class="card-header">🔝 En Fazla İade Edilen Ürünler</div>
-              <div class="card-body p-0">
-                <canvas id="urunIadeChart" height="200"></canvas>
-              </div>
-            </div>
-          </div>
-          <div class="col-md-6">
-            <div class="card">
-              <div class="card-header">📋 İade Nedenleri</div>
-              <div class="card-body p-0">
-                <canvas id="nedenChart" height="200"></canvas>
-              </div>
-            </div>
-          </div>
-          <div class="col-md-6">
-            <div class="card">
-              <div class="card-header">📦 Toplama Bazlı İadeler</div>
-              <div class="card-body" id="toplamIadeTable"></div>
-            </div>
-          </div>
+          <div class="col-md-6"><div class="card"><div class="card-header">🔝 En Fazla İade Edilen Ürünler</div><div class="card-body p-0"><canvas id="urunIadeChart" height="200"></canvas></div></div></div>
+          <div class="col-md-6"><div class="card"><div class="card-header">📋 İade Nedenleri</div><div class="card-body p-0"><canvas id="nedenChart" height="200"></canvas></div></div></div>
+          <div class="col-md-6"><div class="card"><div class="card-header">📦 Toplama Bazlı İadeler</div><div class="card-body" id="toplamIadeTable"></div></div></div>
         </div>
       </div>
     </div>
   </div>
 </div>
 
-<!-- ── Geçmiş Modal ── -->
 <div class="modal fade" id="iadeGecmisModal" tabindex="-1">
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title">📂 İade Yükleme Geçmişi</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
+      <div class="modal-header"><h5 class="modal-title">📂 İade Yükleme Geçmişi</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
       <div class="modal-body" id="iadeGecmisBody">Yükleniyor...</div>
     </div>
   </div>
@@ -156,26 +188,39 @@
 
 {% endblock %}
 {% block extra_js %}
+<script src="{{ url_for('static', filename='js/animations.js') }}"></script>
 <script>
 initUploadZone('iadeUploadZone', 'iadeExcelFile');
+if (window.disableGraphAnimations) disableGraphAnimations();
 
 let currentPage = 1;
+let iadeMap = {};
+let chartsLoaded = false;
 
-// ── Load Returns ──────────────────────────────────────
 async function loadIadeler(page = 1) {
   currentPage = page;
-  const { ok, data } = await apiFetch(`/iadeler/api/list?page=${page}&per_page=20`);
-  if (!ok) return;
+  const params = new URLSearchParams({
+    page,
+    per_page: 20,
+    toplama_id: document.getElementById('filterToplama').value,
+    beden: document.getElementById('filterBeden').value.trim(),
+    adet_tipi: document.getElementById('filterAdetTipi').value,
+  });
+
+  const { data } = await apiFetch(`/iadeler/api/list?${params.toString()}`);
+  if (!data?.basarili) return;
 
   const tbody = document.getElementById('iadeBody');
+  iadeMap = {};
   if (!data.kayitlar.length) {
-    tbody.innerHTML = '<tr><td colspan="9" class="text-center py-4 text-muted">Henüz kayıt yok</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="11" class="text-center py-4 text-muted">Henüz kayıt yok</td></tr>';
     document.getElementById('iadePagination').innerHTML = '';
     return;
   }
 
-  tbody.innerHTML = data.kayitlar.map((row, i) => `
-    <tr>
+  tbody.innerHTML = data.kayitlar.map((row, i) => {
+    iadeMap[row.id] = row;
+    return `<tr>
       <td class="text-muted">${(page-1)*20 + i + 1}</td>
       <td><strong>${row.siparis_no}</strong></td>
       <td>${formatDate(row.tarih)}</td>
@@ -184,16 +229,20 @@ async function loadIadeler(page = 1) {
       <td>${row.adet}</td>
       <td>${row.sebep || '-'}</td>
       <td>${row.toplama || '-'}</td>
+      <td><span class="badge ${row.kontrol_durumu === 'Kontrol Edildi' ? 'bg-success' : 'bg-warning text-dark'}">${row.kontrol_durumu}</span></td>
+      <td>${row.hata_sebebi || '-'}</td>
       <td>
+        <button class="btn btn-sm btn-outline-primary" onclick="openKontrolModal(${row.id})">✅</button>
         <button class="btn btn-sm btn-warning" onclick="openIadeDuzenle(${row.id},'${row.beden||''}',${row.adet},'${row.sebep||''}')">✏️</button>
+        <a class="btn btn-sm btn-outline-success" href="/iadeler/api/${row.id}/yeniden-yukle-excel">📥</a>
         <button class="btn btn-sm btn-danger" onclick="iadeSil(${row.id})">🗑️</button>
       </td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
 
   renderPagination('iadePagination', page, Math.ceil(data.toplam / 20), loadIadeler);
 }
 
-// ── Excel Upload ──────────────────────────────────────
 async function iadeExcelYukle() {
   const file = document.getElementById('iadeExcelFile').files[0];
   if (!file) { showAlert('warning', 'Dosya seçin!'); return; }
@@ -201,23 +250,76 @@ async function iadeExcelYukle() {
   const fd = new FormData();
   fd.append('file', file);
   setLoading(true);
-  const { ok, data } = await apiFetch('/iadeler/api/excel-yukle', { method: 'POST', body: fd });
+  const { data } = await apiFetch('/iadeler/api/excel-yukle', { method: 'POST', body: fd });
   setLoading(false);
 
   const res = document.getElementById('iadeExcelResult');
   if (data.basarili) {
     const o = data.ozet;
-    res.innerHTML = `
-      <div class="alert alert-success">✓ ${data.mesaj}<br>
-      Toplam: ${o.toplam_satir} | Başarılı: ${o.islenen_satir} | Hatalı: ${o.hatali_satir}
-      </div>`;
+    const tanimsizLink = (o.tanimsiz_urun > 0 || o.tanimsiz_beden > 0)
+      ? `<a class="btn btn-sm btn-outline-danger mt-2" href="/raporlar/api/tanimsiz-rapor-excel?modul=iade&upload_id=${data.upload_id}">📥 Tanımsızları Excel Al</a>`
+      : '';
+    res.innerHTML = `<div class="alert alert-success">✓ ${data.mesaj}<br>Toplam: ${o.toplam_satir} | Başarılı: ${o.islenen_satir} | Hatalı: ${o.hatali_satir}${tanimsizLink}</div>`;
     loadIadeler(1);
   } else {
     res.innerHTML = `<div class="alert alert-danger">✗ ${data.mesaj}</div>`;
   }
 }
 
-// ── Edit / Delete ─────────────────────────────────────
+async function manualIadeEkle() {
+  const payload = {
+    siparis_no: document.getElementById('mSiparis').value,
+    urun_kodu: document.getElementById('mUrunKod').value,
+    tarih: document.getElementById('mTarih').value,
+    beden: document.getElementById('mBeden').value,
+    adet: document.getElementById('mAdet').value,
+    sebebi: document.getElementById('mSebep').value,
+  };
+
+  const { data } = await apiFetch('/iadeler/api/manual-ekle', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+
+  if (data?.basarili) {
+    showAlert('success', '✓ ' + data.mesaj);
+    bootstrap.Modal.getInstance(document.getElementById('iadeManualModal')).hide();
+    loadIadeler(1);
+  } else {
+    showAlert('danger', '✗ ' + (data?.mesaj || 'Hata'));
+  }
+}
+
+function openKontrolModal(id) {
+  const row = iadeMap[id];
+  if (!row) return;
+  document.getElementById('kontrolIadeId').value = id;
+  document.getElementById('kontrolDurum').value = row.kontrol_durumu || 'Kontrol Edilmedi';
+  document.getElementById('kontrolHataSebebi').value = row.hata_sebebi || '';
+  new bootstrap.Modal(document.getElementById('kontrolModal')).show();
+}
+
+async function kaydetKontrolDurumu() {
+  const id = document.getElementById('kontrolIadeId').value;
+  const { data } = await apiFetch(`/iadeler/api/${id}/kontrol`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      durum: document.getElementById('kontrolDurum').value,
+      hata_sebebi: document.getElementById('kontrolHataSebebi').value,
+    })
+  });
+
+  if (data?.basarili) {
+    showAlert('success', '✓ ' + data.mesaj);
+    bootstrap.Modal.getInstance(document.getElementById('kontrolModal')).hide();
+    loadIadeler(currentPage);
+  } else {
+    showAlert('danger', '✗ ' + (data?.mesaj || 'Hata'));
+  }
+}
+
 function openIadeDuzenle(id, beden, adet, sebep) {
   document.getElementById('iadeDuzenleId').value = id;
   document.getElementById('iadeDuzenleBeden').value = beden;
@@ -228,7 +330,6 @@ function openIadeDuzenle(id, beden, adet, sebep) {
 
 async function iadeGuncelle() {
   const id = document.getElementById('iadeDuzenleId').value;
-  setLoading(true);
   const { data } = await apiFetch(`/iadeler/api/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
@@ -238,7 +339,6 @@ async function iadeGuncelle() {
       sebebi: document.getElementById('iadeDuzenleSebep').value,
     })
   });
-  setLoading(false);
   if (data.basarili) {
     showAlert('success', '✓ ' + data.mesaj);
     bootstrap.Modal.getInstance(document.getElementById('iadeDuzenleModal')).hide();
@@ -250,9 +350,7 @@ async function iadeGuncelle() {
 
 function iadeSil(id) {
   confirmAction('Bu iade silinecek. Emin misiniz?', async () => {
-    setLoading(true);
     const { data } = await apiFetch(`/iadeler/api/${id}`, { method: 'DELETE' });
-    setLoading(false);
     if (data.basarili) {
       showAlert('success', '✓ Silindi');
       loadIadeler(currentPage);
@@ -262,9 +360,6 @@ function iadeSil(id) {
   });
 }
 
-// ── Analizler ─────────────────────────────────────────
-let chartsLoaded = false;
-
 async function showAnalizler() {
   new bootstrap.Modal(document.getElementById('analizlerModal')).show();
   if (chartsLoaded) return;
@@ -272,59 +367,39 @@ async function showAnalizler() {
   const { data } = await apiFetch('/iadeler/api/analizler');
   if (!data.basarili) return;
 
-  // Ürün İade Chart
   new Chart(document.getElementById('urunIadeChart'), {
     type: 'bar',
     data: {
       labels: data.urun_iadeleri.map(u => u.kod),
-      datasets: [{ label: 'İade Adeti', data: data.urun_iadeleri.map(u => u.adet),
-        backgroundColor: 'rgba(99,102,241,0.75)' }]
+      datasets: [{ label: 'İade Adeti', data: data.urun_iadeleri.map(u => u.adet), backgroundColor: 'rgba(99,102,241,0.75)' }]
     },
-    options: { responsive: true, plugins: { legend: { display: false } } }
+    options: { responsive: true, animation: false, plugins: { legend: { display: false } } }
   });
 
-  // Neden Chart
   new Chart(document.getElementById('nedenChart'), {
     type: 'doughnut',
     data: {
       labels: data.iade_nedenleri.map(n => n.sebep),
-      datasets: [{ data: data.iade_nedenleri.map(n => n.adet),
-        backgroundColor: ['#6366f1','#10b981','#f59e0b','#ef4444','#8b5cf6','#3b82f6'] }]
+      datasets: [{ data: data.iade_nedenleri.map(n => n.adet), backgroundColor: ['#6366f1','#10b981','#f59e0b','#ef4444','#8b5cf6','#3b82f6'] }]
     },
-    options: { responsive: true }
+    options: { responsive: true, animation: false }
   });
 
-  // Toplama Table
-  const tt = document.getElementById('toplamIadeTable');
-  tt.innerHTML = `<table class="table table-sm mb-0">
-    <thead><tr><th>Toplama</th><th>İade Adeti</th></tr></thead>
-    <tbody>${data.toplama_iadeleri.map(t => `<tr><td>${t.toplama}</td><td>${t.adet}</td></tr>`).join('')}</tbody>
-  </table>`;
-
+  document.getElementById('toplamIadeTable').innerHTML = `<table class="table table-sm mb-0"><thead><tr><th>Toplama</th><th>İade Adeti</th></tr></thead><tbody>${data.toplama_iadeleri.map(t => `<tr><td>${t.toplama}</td><td>${t.adet}</td></tr>`).join('')}</tbody></table>`;
   chartsLoaded = true;
 }
 
-// ── Geçmiş ───────────────────────────────────────────
 async function loadGecmis() {
   const { data } = await apiFetch('/iadeler/api/gecmis');
   const body = document.getElementById('iadeGecmisBody');
   if (!data.basarili || !data.gecmis.length) {
     body.innerHTML = '<p class="text-muted text-center py-3">Geçmiş bulunamadı</p>';
   } else {
-    body.innerHTML = `<table class="table table-sm">
-      <thead><tr><th>Dosya</th><th>Tarih</th><th>Toplam</th><th>Başarılı</th><th>Hatalı</th></tr></thead>
-      <tbody>${data.gecmis.map(g => `<tr>
-        <td>${g.dosya_adi}</td><td>${g.yukleme_tarihi}</td>
-        <td>${g.toplam_satir}</td><td class="text-success">${g.basarili}</td>
-        <td class="text-danger">${g.basarisiz}</td>
-      </tr>`).join('')}</tbody>
-    </table>`;
+    body.innerHTML = `<table class="table table-sm"><thead><tr><th>Dosya</th><th>Tarih</th><th>Toplam</th><th>Başarılı</th><th>Hatalı</th></tr></thead><tbody>${data.gecmis.map(g => `<tr><td>${g.dosya_adi}</td><td>${g.yukleme_tarihi}</td><td>${g.toplam_satir}</td><td class="text-success">${g.basarili}</td><td class="text-danger">${g.basarisiz}</td></tr>`).join('')}</tbody></table>`;
   }
   new bootstrap.Modal(document.getElementById('iadeGecmisModal')).show();
 }
 
-// Initial load
 loadIadeler(1);
 </script>
 {% endblock %}
-

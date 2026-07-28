@@ -8,10 +8,14 @@
     <a href="/kayitlar/api/template" class="btn btn-success btn-sm">📥 Şablon İndir</a>
     <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#excelModal">📤 Excel Yükle</button>
     <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#ekleModal">➕ Manuel Ekle</button>
+    <button class="btn btn-outline-secondary btn-sm" onclick="otomatikSenkronize()">🔄 Otomatik Trendyol Senkron</button>
   </div>
 </div>
 
-<!-- Filter Row -->
+<div class="alert alert-info small">
+  Trendyol Sipariş/Fatura alanları siparişlerden otomatik gelir. Bu ekranda sadece <strong>Diğer Pazar</strong> manuel düzenlenir.
+</div>
+
 <div class="card mb-3">
   <div class="card-body">
     <div class="row g-2 align-items-end">
@@ -44,7 +48,6 @@
   </div>
 </div>
 
-<!-- Table -->
 <div class="card">
   <div class="card-body p-0">
     <div class="table-responsive">
@@ -54,48 +57,22 @@
             <th>Tarih</th>
             <th>Personel</th>
             <th>Toplama</th>
-            <th>Trendyol Sipariş</th>
-            <th>Trendyol Fatura</th>
-            <th>Diğer Pazar</th>
+            <th>Trendyol Sipariş (Oto)</th>
+            <th>Trendyol Fatura (Oto)</th>
+            <th>Diğer Pazar (Manuel)</th>
             <th>Toplam</th>
             <th>Not</th>
             <th>İşlemler</th>
           </tr>
         </thead>
         <tbody id="kayitlarBody">
-          {% for kayit in kayitlar %}
-          <tr>
-            <td>{{ kayit.tarih }}</td>
-            <td>{{ kayit.personel.ad }}</td>
-            <td>{{ kayit.toplama.ad }}</td>
-            <td>{{ kayit.trendyol_siparis }}</td>
-            <td>{{ kayit.trendyol_fatura }}</td>
-            <td>{{ kayit.diger_pazar }}</td>
-            <td><strong>{{ (kayit.trendyol_siparis + kayit.trendyol_fatura + kayit.diger_pazar) | int }}</strong></td>
-            <td>{{ kayit.not_alan or '' }}</td>
-            <td>
-              <button class="btn btn-sm btn-warning editBtn"
-                data-id="{{ kayit.id }}"
-                data-tarih="{{ kayit.tarih }}"
-                data-personel="{{ kayit.personel_id }}"
-                data-toplama="{{ kayit.toplama_id }}"
-                data-ts="{{ kayit.trendyol_siparis }}"
-                data-tf="{{ kayit.trendyol_fatura }}"
-                data-dp="{{ kayit.diger_pazar }}"
-                data-not="{{ kayit.not_alan or '' }}">✏️</button>
-              <button class="btn btn-sm btn-danger deleteBtn" data-id="{{ kayit.id }}">🗑️</button>
-            </td>
-          </tr>
-          {% else %}
-          <tr><td colspan="9" class="text-center py-4 text-muted">Henüz kayıt yok</td></tr>
-          {% endfor %}
+          <tr><td colspan="9" class="text-center py-4 text-muted">Yükleniyor...</td></tr>
         </tbody>
       </table>
     </div>
   </div>
 </div>
 
-<!-- ── Manuel Ekleme Modal ── -->
 <div class="modal fade" id="ekleModal" tabindex="-1">
   <div class="modal-dialog">
     <div class="modal-content">
@@ -104,44 +81,34 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
-        <form id="ekleForm">
-          <div class="row g-3">
-            <div class="col-md-6">
-              <label class="form-label">Tarih *</label>
-              <input type="date" class="form-control" id="eTarih" required>
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">Personel *</label>
-              <select class="form-select" id="ePersonel" required>
-                <option value="">Seçin...</option>
-                {% for p in personeller %}<option value="{{ p.id }}">{{ p.ad }}</option>{% endfor %}
-              </select>
-            </div>
-            <div class="col-md-12">
-              <label class="form-label">Toplama *</label>
-              <select class="form-select" id="eToplama" required>
-                <option value="">Seçin...</option>
-                {% for t in toplamalar %}<option value="{{ t.id }}">{{ t.ad }}</option>{% endfor %}
-              </select>
-            </div>
-            <div class="col-md-4">
-              <label class="form-label">Trendyol Sipariş</label>
-              <input type="number" class="form-control" id="eTS" value="0" min="0" step="0.01">
-            </div>
-            <div class="col-md-4">
-              <label class="form-label">Trendyol Fatura</label>
-              <input type="number" class="form-control" id="eTF" value="0" min="0" step="0.01">
-            </div>
-            <div class="col-md-4">
-              <label class="form-label">Diğer Pazar</label>
-              <input type="number" class="form-control" id="eDP" value="0" min="0" step="0.01">
-            </div>
-            <div class="col-12">
-              <label class="form-label">Not</label>
-              <textarea class="form-control" id="eNot" rows="2"></textarea>
-            </div>
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">Tarih *</label>
+            <input type="date" class="form-control" id="eTarih" required>
           </div>
-        </form>
+          <div class="col-md-6">
+            <label class="form-label">Personel *</label>
+            <select class="form-select" id="ePersonel" required>
+              <option value="">Seçin...</option>
+              {% for p in personeller %}<option value="{{ p.id }}">{{ p.ad }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col-md-12">
+            <label class="form-label">Toplama *</label>
+            <select class="form-select" id="eToplama" required>
+              <option value="">Seçin...</option>
+              {% for t in toplamalar %}<option value="{{ t.id }}">{{ t.ad }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col-md-12">
+            <label class="form-label">Diğer Pazar</label>
+            <input type="number" class="form-control" id="eDP" value="0" min="0" step="0.01">
+          </div>
+          <div class="col-12">
+            <label class="form-label">Not</label>
+            <textarea class="form-control" id="eNot" rows="2"></textarea>
+          </div>
+        </div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
@@ -151,7 +118,6 @@
   </div>
 </div>
 
-<!-- ── Düzenleme Modal ── -->
 <div class="modal fade" id="duzenleModal" tabindex="-1">
   <div class="modal-dialog">
     <div class="modal-content">
@@ -178,15 +144,15 @@
               {% for t in toplamalar %}<option value="{{ t.id }}">{{ t.ad }}</option>{% endfor %}
             </select>
           </div>
-          <div class="col-md-4">
-            <label class="form-label">Trendyol Sipariş</label>
-            <input type="number" class="form-control" id="dTS" min="0" step="0.01">
+          <div class="col-md-6">
+            <label class="form-label">Trendyol Sipariş (Oto)</label>
+            <input type="number" class="form-control" id="dTS" readonly>
           </div>
-          <div class="col-md-4">
-            <label class="form-label">Trendyol Fatura</label>
-            <input type="number" class="form-control" id="dTF" min="0" step="0.01">
+          <div class="col-md-6">
+            <label class="form-label">Trendyol Fatura (Oto)</label>
+            <input type="number" class="form-control" id="dTF" readonly>
           </div>
-          <div class="col-md-4">
+          <div class="col-12">
             <label class="form-label">Diğer Pazar</label>
             <input type="number" class="form-control" id="dDP" min="0" step="0.01">
           </div>
@@ -204,7 +170,6 @@
   </div>
 </div>
 
-<!-- ── Excel Yükleme Modal ── -->
 <div class="modal fade" id="excelModal" tabindex="-1">
   <div class="modal-dialog">
     <div class="modal-content">
@@ -214,7 +179,7 @@
       </div>
       <div class="modal-body">
         <div class="alert alert-info">
-          <strong>Şablon formatı:</strong> Tarih | Personel | Toplama | Trendyol Siparis | Trendyol Fatura | Diger Pazar | Not
+          <strong>Şablon formatı:</strong> Tarih | Personel | Toplama | Diger Pazar | Not
         </div>
         <div class="upload-zone" id="uploadZone" onclick="document.getElementById('excelFile').click()">
           <div class="upload-zone-icon">📂</div>
@@ -235,10 +200,66 @@
 {% endblock %}
 {% block extra_js %}
 <script>
-// Upload zone drag-drop
 initUploadZone('uploadZone', 'excelFile');
 
-// ── Kayıt Ekle ──────────────────────────────────────────
+async function otomatikSenkronize() {
+  setLoading(true);
+  const { data } = await apiFetch('/kayitlar/api/otomatik-senkronize', { method: 'POST' });
+  setLoading(false);
+  if (data?.basarili) {
+    showAlert('success', `✓ ${data.mesaj} (Yeni: ${data.ozet.olusturulan}, Güncel: ${data.ozet.guncellenen})`);
+    loadKayitlar();
+  }
+}
+
+async function loadKayitlar() {
+  const params = new URLSearchParams({
+    personel_id: document.getElementById('filterPersonel').value,
+    toplama_id: document.getElementById('filterToplama').value,
+    tarih_baslangic: document.getElementById('filterBaslangic').value,
+    tarih_bitis: document.getElementById('filterBitis').value,
+  });
+
+  const { data } = await apiFetch(`/kayitlar/api/list?${params.toString()}`);
+  if (!data?.basarili) return;
+
+  const tbody = document.getElementById('kayitlarBody');
+  if (!data.kayitlar.length) {
+    tbody.innerHTML = '<tr><td colspan="9" class="text-center py-4 text-muted">Henüz kayıt yok</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = data.kayitlar.map(k => `
+    <tr>
+      <td>${k.tarih}</td>
+      <td>${k.personel}</td>
+      <td>${k.toplama}</td>
+      <td>${k.trendyol_siparis}</td>
+      <td>${k.trendyol_fatura}</td>
+      <td>${k.diger_pazar}</td>
+      <td><strong>${(Number(k.trendyol_siparis || 0) + Number(k.trendyol_fatura || 0) + Number(k.diger_pazar || 0)).toFixed(0)}</strong></td>
+      <td>${k.not || ''}</td>
+      <td>
+        <button class="btn btn-sm btn-warning" onclick='openDuzenle(${JSON.stringify(k)})'>✏️</button>
+        <button class="btn btn-sm btn-danger" onclick="kayitSil(${k.id})">🗑️</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function openDuzenle(k) {
+  document.getElementById('dId').value = k.id;
+  const parts = (k.tarih || '').split('.');
+  document.getElementById('dTarih').value = parts.length === 3 ? `${parts[2]}-${parts[1]}-${parts[0]}` : '';
+  document.getElementById('dPersonel').value = k.personel_id;
+  document.getElementById('dToplama').value = k.toplama_id;
+  document.getElementById('dTS').value = k.trendyol_siparis || 0;
+  document.getElementById('dTF').value = k.trendyol_fatura || 0;
+  document.getElementById('dDP').value = k.diger_pazar || 0;
+  document.getElementById('dNot').value = k.not || '';
+  new bootstrap.Modal(document.getElementById('duzenleModal')).show();
+}
+
 async function kayitEkle() {
   const tarih = document.getElementById('eTarih').value;
   const personelId = document.getElementById('ePersonel').value;
@@ -246,90 +267,71 @@ async function kayitEkle() {
   if (!tarih || !personelId || !toplamId) {
     showAlert('warning', 'Tarih, personel ve toplama zorunludur!'); return;
   }
+
   setLoading(true);
-  const { ok, data } = await apiFetch('/api/kayit-ekle', {
+  const { data } = await apiFetch('/api/kayit-ekle', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      tarih, personel_id: personelId, toplama_id: toplamId,
-      trendyol_siparis: document.getElementById('eTS').value || 0,
-      trendyol_fatura: document.getElementById('eTF').value || 0,
+      tarih,
+      personel_id: personelId,
+      toplama_id: toplamId,
+      trendyol_siparis: 0,
+      trendyol_fatura: 0,
       diger_pazar: document.getElementById('eDP').value || 0,
       not: document.getElementById('eNot').value,
     })
   });
   setLoading(false);
+
   if (data.basarili) {
     showAlert('success', '✓ ' + data.mesaj);
     bootstrap.Modal.getInstance(document.getElementById('ekleModal')).hide();
-    setTimeout(() => location.reload(), 800);
+    loadKayitlar();
   } else {
     showAlert('danger', '✗ ' + data.mesaj);
   }
 }
 
-// ── Edit Button ─────────────────────────────────────────
-document.querySelectorAll('.editBtn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.getElementById('dId').value = btn.dataset.id;
-    // Tarih formatı: DD.MM.YYYY → YYYY-MM-DD
-    const parts = btn.dataset.tarih.split('.');
-    document.getElementById('dTarih').value = parts.length === 3 ? `${parts[2]}-${parts[1]}-${parts[0]}` : btn.dataset.tarih;
-    document.getElementById('dPersonel').value = btn.dataset.personel;
-    document.getElementById('dToplama').value = btn.dataset.toplama;
-    document.getElementById('dTS').value = btn.dataset.ts;
-    document.getElementById('dTF').value = btn.dataset.tf;
-    document.getElementById('dDP').value = btn.dataset.dp;
-    document.getElementById('dNot').value = btn.dataset.not;
-    new bootstrap.Modal(document.getElementById('duzenleModal')).show();
-  });
-});
-
-// ── Kayıt Güncelle ──────────────────────────────────────
 async function kayitGuncelle() {
   const id = document.getElementById('dId').value;
   setLoading(true);
-  const { ok, data } = await apiFetch(`/kayitlar/api/guncelle/${id}`, {
+  const { data } = await apiFetch(`/kayitlar/api/guncelle/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       tarih: document.getElementById('dTarih').value,
       personel_id: document.getElementById('dPersonel').value,
       toplama_id: document.getElementById('dToplama').value,
-      trendyol_siparis: document.getElementById('dTS').value,
-      trendyol_fatura: document.getElementById('dTF').value,
       diger_pazar: document.getElementById('dDP').value,
       not: document.getElementById('dNot').value,
     })
   });
   setLoading(false);
+
   if (data.basarili) {
     showAlert('success', '✓ ' + data.mesaj);
     bootstrap.Modal.getInstance(document.getElementById('duzenleModal')).hide();
-    setTimeout(() => location.reload(), 800);
+    loadKayitlar();
   } else {
     showAlert('danger', '✗ ' + data.mesaj);
   }
 }
 
-// ── Delete Buttons ──────────────────────────────────────
-document.querySelectorAll('.deleteBtn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    confirmAction('Bu kayıt silinecek. Emin misiniz?', async () => {
-      setLoading(true);
-      const { data } = await apiFetch(`/kayitlar/api/sil/${btn.dataset.id}`, { method: 'DELETE' });
-      setLoading(false);
-      if (data.basarili) {
-        showAlert('success', '✓ ' + data.mesaj);
-        setTimeout(() => location.reload(), 600);
-      } else {
-        showAlert('danger', '✗ ' + data.mesaj);
-      }
-    });
+function kayitSil(id) {
+  confirmAction('Bu kayıt silinecek. Emin misiniz?', async () => {
+    setLoading(true);
+    const { data } = await apiFetch(`/kayitlar/api/sil/${id}`, { method: 'DELETE' });
+    setLoading(false);
+    if (data.basarili) {
+      showAlert('success', '✓ ' + data.mesaj);
+      loadKayitlar();
+    } else {
+      showAlert('danger', '✗ ' + data.mesaj);
+    }
   });
-});
+}
 
-// ── Excel Yükle ─────────────────────────────────────────
 async function excelYukle() {
   const file = document.getElementById('excelFile').files[0];
   if (!file) { showAlert('warning', 'Dosya seçin!'); return; }
@@ -337,29 +339,19 @@ async function excelYukle() {
   const fd = new FormData();
   fd.append('file', file);
   setLoading(true);
-  const { ok, data } = await apiFetch('/kayitlar/api/excel-yukle', { method: 'POST', body: fd });
+  const { data } = await apiFetch('/kayitlar/api/excel-yukle', { method: 'POST', body: fd });
   setLoading(false);
 
   const res = document.getElementById('excelResult');
   if (data.basarili) {
     const o = data.ozet;
-    res.innerHTML = `
-      <div class="alert alert-success">
-        <strong>✓ ${data.mesaj}</strong><br>
-        Toplam: ${o.toplam_satir} | Başarılı: ${o.basarili} | Hatalı: ${o.hatali}
-      </div>
-      ${data.hatalar && data.hatalar.length ? `
-        <div class="alert alert-warning">
-          <strong>Hatalı Satırlar:</strong>
-          <ul class="mb-0 mt-2">
-            ${data.hatalar.map(h => `<li>Satır ${h.satir}: ${h.hata}</li>`).join('')}
-          </ul>
-        </div>` : ''}`;
-    setTimeout(() => location.reload(), 2000);
+    res.innerHTML = `<div class="alert alert-success"><strong>✓ ${data.mesaj}</strong><br>Toplam: ${o.toplam_satir} | Başarılı: ${o.basarili} | Hatalı: ${o.hatali}</div>`;
+    loadKayitlar();
   } else {
     res.innerHTML = `<div class="alert alert-danger">✗ ${data.mesaj}</div>`;
   }
 }
+
+loadKayitlar();
 </script>
 {% endblock %}
-
