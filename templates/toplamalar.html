@@ -1,62 +1,384 @@
 {% extends "base.html" %}
-
-{% block title %}Toplamalar - Depo Takip Sistemi{% endblock %}
-
+{% block title %}Toplamalar{% endblock %}
 {% block content %}
-<h1 class="mb-4">📦 Toplamalar</h1>
 
-<div class="card mb-4">
-    <div class="card-body">
-        <form id="toplamForm">
-            <div class="input-group">
-                <input type="text" class="form-control" id="toplamAd" placeholder="Toplama adı..." required>
-                <button class="btn btn-success" type="submit">➕ Ekle</button>
-            </div>
-        </form>
-    </div>
+<div class="page-header">
+  <h1 class="page-title">📦 Toplamalar</h1>
+  <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#toplamEkleModal">➕ Yeni Toplama</button>
 </div>
 
-<div class="row">
-    {% for toplama in toplamalar %}
-    <div class="col-md-4 mb-3">
-        <div class="card">
-            <div class="card-body">
-                <h5>{{ toplama.ad }}</h5>
-                <button class="btn btn-sm btn-danger deleteBtn" data-id="{{ toplama.id }}">Sil</button>
-            </div>
+<div class="row g-3" id="toplamalarGrid">
+  {% for toplama in toplamalar %}
+  <div class="col-md-6 col-lg-4" id="toplama-card-{{ toplama.id }}">
+    <div class="card h-100">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span class="fw-bold">{{ toplama.ad }}</span>
+        <div class="d-flex gap-1">
+          <button class="btn btn-sm btn-outline-danger" onclick="toplamaSil({{ toplama.id }}, '{{ toplama.ad }}')">🗑️</button>
         </div>
+      </div>
+      <div class="card-body">
+        <!-- Products Section -->
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <small class="fw-semibold text-muted">ÜRÜNLER</small>
+          <div class="d-flex gap-1">
+            <a href="/toplamalar/api/{{ toplama.id }}/template" class="btn btn-outline-success btn-sm" style="font-size:0.7rem">📥 Şablon</a>
+            <button class="btn btn-primary btn-sm" style="font-size:0.7rem"
+              onclick="openUrunEkle({{ toplama.id }}, '{{ toplama.ad }}')">➕ Ürün</button>
+            <button class="btn btn-outline-primary btn-sm" style="font-size:0.7rem"
+              onclick="openExcelYukle({{ toplama.id }}, '{{ toplama.ad }}')">📤 Excel</button>
+          </div>
+        </div>
+
+        <!-- Products List -->
+        <div id="urunler-{{ toplama.id }}" style="max-height:220px;overflow-y:auto">
+          <div class="text-center text-muted small py-2">Yükleniyor...</div>
+        </div>
+      </div>
     </div>
-    {% endfor %}
+  </div>
+  {% endfor %}
+</div>
+
+<!-- ── Toplama Ekle Modal ── -->
+<div class="modal fade" id="toplamEkleModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">➕ Yeni Toplama</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="text" class="form-control" id="toplamAd" placeholder="Toplama adı...">
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">İptal</button>
+        <button type="button" class="btn btn-primary btn-sm" onclick="toplamaEkle()">Ekle</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Ürün Ekle Modal ── -->
+<div class="modal fade" id="urunEkleModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="urunEkleTitle">➕ Ürün Ekle</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="urunToplamId">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">Ürün Kodu *</label>
+            <input type="text" class="form-control" id="urunKod" placeholder="BER1004">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Marka *</label>
+            <input type="text" class="form-control" id="urunMarka" placeholder="Marka">
+          </div>
+          <div class="col-12">
+            <label class="form-label">Açıklama *</label>
+            <input type="text" class="form-control" id="urunAciklama" placeholder="Ürün açıklaması">
+          </div>
+          <div class="col-12">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="bedenAyrimi" onchange="toggleBedenField()">
+              <label class="form-check-label" for="bedenAyrimi">Beden Ayrımı Var</label>
+            </div>
+          </div>
+          <div class="col-12" id="bedenlerField" style="display:none">
+            <label class="form-label">Bedenler (virgülle ayırın)</label>
+            <input type="text" class="form-control" id="bedenlerInput" placeholder="S, M, L, XL, 36, 38...">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">İptal</button>
+        <button type="button" class="btn btn-primary btn-sm" onclick="urunEkle()">💾 Ekle</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Excel Yükle Modal (Toplama) ── -->
+<div class="modal fade" id="toplamExcelModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="toplamExcelTitle">📤 Excel Yükle</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="excelToplamId">
+        <div class="alert alert-info small">
+          Şablon formatı: <strong>Urun Kodu | Marka | Aciklama | Beden Ayrimi | Bedenler</strong>
+        </div>
+        <div class="upload-zone" id="toplamUploadZone">
+          <div class="upload-zone-icon">📂</div>
+          <p class="fw-semibold mb-1">Excel dosyasını buraya sürükleyin veya tıklayın</p>
+          <p class="text-muted small upload-filename">Dosya seçilmedi (.xlsx)</p>
+          <input type="file" id="toplamExcelFile" accept=".xlsx,.xlsm" class="d-none">
+        </div>
+        <div id="toplamExcelResult" class="mt-3"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Kapat</button>
+        <button type="button" class="btn btn-primary btn-sm" onclick="toplamExcelYukle()">🚀 Yükle</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Ürün Düzenle Modal ── -->
+<div class="modal fade" id="urunDuzenleModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">✏️ Ürün Düzenle</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="duzenleUrunId">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">Marka</label>
+            <input type="text" class="form-control" id="duzenleUrunMarka">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Açıklama</label>
+            <input type="text" class="form-control" id="duzenleUrunAciklama">
+          </div>
+          <div class="col-12">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="duzenleBedenAyrimi">
+              <label class="form-check-label">Beden Ayrımı</label>
+            </div>
+          </div>
+          <div class="col-12">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="duzenleUrunDurum" checked>
+              <label class="form-check-label">Aktif</label>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">İptal</button>
+        <button type="button" class="btn btn-warning btn-sm" onclick="urunGuncelle()">💾 Güncelle</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 {% endblock %}
-
 {% block extra_js %}
 <script>
-    document.getElementById('toplamForm').addEventListener('submit', async function(e) {
-        e.preventDefault();
-        const ad = document.getElementById('toplamAd').value;
-        try {
-            const response = await fetch('/toplamalar/api/ekle', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ad: ad })
-            });
-            const result = await response.json();
-            if (result.basarili) location.reload();
-        } catch (e) {}
+let activeToplamId = null;
+
+// ── Load Products for all toplamalar ──────────────────
+async function loadUrunler(toplamId) {
+  const container = document.getElementById(`urunler-${toplamId}`);
+  if (!container) return;
+
+  const { ok, data } = await apiFetch(`/toplamalar/api/${toplamId}/urunler`);
+  if (!ok || !data.basarili) {
+    container.innerHTML = '<p class="text-danger small">Yüklenemedi</p>'; return;
+  }
+
+  if (!data.urunler.length) {
+    container.innerHTML = '<div class="empty-state py-2"><p class="small text-muted">Henüz ürün yok</p></div>';
+    return;
+  }
+
+  container.innerHTML = data.urunler.map(u => `
+    <div class="d-flex align-items-center justify-content-between py-1 border-bottom" style="font-size:0.8rem">
+      <div>
+        <span class="badge bg-primary-soft text-primary me-1">${u.ana_kod}</span>
+        <span class="text-muted">${u.marka}</span>
+        ${u.beden_ayrimi ? '<span class="badge bg-warning ms-1" style="font-size:0.65rem">BEDEN</span>' : ''}
+      </div>
+      <div class="d-flex gap-1">
+        <button class="btn btn-outline-warning" style="padding:1px 6px;font-size:0.7rem" onclick="openUrunDuzenle(${u.id},'${u.marka}','${u.aciklama}',${u.beden_ayrimi},${u.durum})">✏️</button>
+        <button class="btn btn-outline-danger" style="padding:1px 6px;font-size:0.7rem" onclick="urunSil(${u.id},${toplamId})">🗑️</button>
+      </div>
+    </div>`).join('');
+}
+
+// Load all on page load
+{% for toplama in toplamalar %}
+loadUrunler({{ toplama.id }});
+{% endfor %}
+
+// ── Toplama Ekle ─────────────────────────────────────
+async function toplamaEkle() {
+  const ad = document.getElementById('toplamAd').value.trim();
+  if (!ad) { showAlert('warning', 'Ad boş olamaz!'); return; }
+  const { data } = await apiFetch('/toplamalar/api/ekle', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ad })
+  });
+  if (data.basarili) {
+    showAlert('success', '✓ ' + data.mesaj);
+    bootstrap.Modal.getInstance(document.getElementById('toplamEkleModal')).hide();
+    setTimeout(() => location.reload(), 600);
+  } else {
+    showAlert('danger', '✗ ' + data.mesaj);
+  }
+}
+
+// ── Toplama Sil ───────────────────────────────────────
+function toplamaSil(id, ad) {
+  confirmAction(`"${ad}" toplaması silinecek. Emin misiniz?`, async () => {
+    const { data } = await apiFetch(`/toplamalar/api/sil/${id}`, { method: 'DELETE' });
+    if (data.basarili) {
+      showAlert('success', '✓ Silindi');
+      document.getElementById(`toplama-card-${id}`)?.remove();
+    } else {
+      showAlert('danger', '✗ ' + data.mesaj);
+    }
+  });
+}
+
+// ── Ürün Ekle Dialog ──────────────────────────────────
+function openUrunEkle(toplamId, toplamAd) {
+  activeToplamId = toplamId;
+  document.getElementById('urunToplamId').value = toplamId;
+  document.getElementById('urunEkleTitle').textContent = `➕ Ürün Ekle — ${toplamAd}`;
+  document.getElementById('urunKod').value = '';
+  document.getElementById('urunMarka').value = '';
+  document.getElementById('urunAciklama').value = '';
+  document.getElementById('bedenAyrimi').checked = false;
+  document.getElementById('bedenlerInput').value = '';
+  document.getElementById('bedenlerField').style.display = 'none';
+  new bootstrap.Modal(document.getElementById('urunEkleModal')).show();
+}
+
+function toggleBedenField() {
+  const show = document.getElementById('bedenAyrimi').checked;
+  document.getElementById('bedenlerField').style.display = show ? '' : 'none';
+}
+
+async function urunEkle() {
+  const toplamId = document.getElementById('urunToplamId').value;
+  const ana_kod = document.getElementById('urunKod').value.trim();
+  const marka = document.getElementById('urunMarka').value.trim();
+  const aciklama = document.getElementById('urunAciklama').value.trim();
+  const beden_ayrimi = document.getElementById('bedenAyrimi').checked;
+  const bedenlerStr = document.getElementById('bedenlerInput').value.trim();
+  const bedenler = bedenlerStr ? bedenlerStr.split(',').map(b => b.trim()).filter(Boolean) : [];
+
+  if (!ana_kod || !marka || !aciklama) { showAlert('warning', 'Zorunlu alanlar eksik!'); return; }
+
+  setLoading(true);
+  const { data } = await apiFetch(`/toplamalar/api/${toplamId}/urun-ekle`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ana_kod, marka, aciklama, beden_ayrimi, bedenler })
+  });
+  setLoading(false);
+
+  if (data.basarili) {
+    showAlert('success', '✓ ' + data.mesaj);
+    bootstrap.Modal.getInstance(document.getElementById('urunEkleModal')).hide();
+    loadUrunler(toplamId);
+  } else {
+    showAlert('danger', '✗ ' + data.mesaj);
+  }
+}
+
+// ── Ürün Düzenle ─────────────────────────────────────
+function openUrunDuzenle(id, marka, aciklama, bedenAyrimi, durum) {
+  document.getElementById('duzenleUrunId').value = id;
+  document.getElementById('duzenleUrunMarka').value = marka;
+  document.getElementById('duzenleUrunAciklama').value = aciklama;
+  document.getElementById('duzenleBedenAyrimi').checked = !!bedenAyrimi;
+  document.getElementById('duzenleUrunDurum').checked = !!durum;
+  new bootstrap.Modal(document.getElementById('urunDuzenleModal')).show();
+}
+
+async function urunGuncelle() {
+  const id = document.getElementById('duzenleUrunId').value;
+  setLoading(true);
+  const { data } = await apiFetch(`/toplamalar/api/urun/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      marka: document.getElementById('duzenleUrunMarka').value,
+      aciklama: document.getElementById('duzenleUrunAciklama').value,
+      beden_ayrimi: document.getElementById('duzenleBedenAyrimi').checked,
+      durum: document.getElementById('duzenleUrunDurum').checked,
+    })
+  });
+  setLoading(false);
+  if (data.basarili) {
+    showAlert('success', '✓ ' + data.mesaj);
+    bootstrap.Modal.getInstance(document.getElementById('urunDuzenleModal')).hide();
+    // Reload the relevant toplama's products
+    document.querySelectorAll('[id^="urunler-"]').forEach(el => {
+      const tid = el.id.replace('urunler-', '');
+      loadUrunler(parseInt(tid));
     });
-    
-    document.querySelectorAll('.deleteBtn').forEach(btn => {
-        btn.addEventListener('click', async function() {
-            if (confirm('Emin misiniz?')) {
-                try {
-                    const response = await fetch(`/toplamalar/api/sil/${this.dataset.id}`, { method: 'DELETE' });
-                    const result = await response.json();
-                    if (result.basarili) location.reload();
-                } catch (e) {}
-            }
-        });
-    });
+  } else {
+    showAlert('danger', '✗ ' + data.mesaj);
+  }
+}
+
+// ── Ürün Sil ─────────────────────────────────────────
+function urunSil(id, toplamId) {
+  confirmAction('Bu ürün silinecek. Emin misiniz?', async () => {
+    setLoading(true);
+    const { data } = await apiFetch(`/toplamalar/api/urun/${id}`, { method: 'DELETE' });
+    setLoading(false);
+    if (data.basarili) {
+      showAlert('success', '✓ Silindi');
+      loadUrunler(toplamId);
+    } else {
+      showAlert('danger', '✗ ' + data.mesaj);
+    }
+  });
+}
+
+// ── Excel Yükle Modal ─────────────────────────────────
+function openExcelYukle(toplamId, toplamAd) {
+  activeToplamId = toplamId;
+  document.getElementById('excelToplamId').value = toplamId;
+  document.getElementById('toplamExcelTitle').textContent = `📤 Excel Yükle — ${toplamAd}`;
+  document.getElementById('toplamExcelResult').innerHTML = '';
+  document.getElementById('toplamExcelFile').value = '';
+  document.querySelector('#toplamUploadZone .upload-filename').textContent = 'Dosya seçilmedi (.xlsx)';
+  new bootstrap.Modal(document.getElementById('toplamExcelModal')).show();
+}
+
+initUploadZone('toplamUploadZone', 'toplamExcelFile');
+
+async function toplamExcelYukle() {
+  const file = document.getElementById('toplamExcelFile').files[0];
+  const toplamId = document.getElementById('excelToplamId').value;
+  if (!file) { showAlert('warning', 'Dosya seçin!'); return; }
+
+  const fd = new FormData();
+  fd.append('file', file);
+  setLoading(true);
+  const { ok, data } = await apiFetch(`/toplamalar/api/${toplamId}/excel-yukle`, { method: 'POST', body: fd });
+  setLoading(false);
+
+  const res = document.getElementById('toplamExcelResult');
+  if (data.basarili) {
+    const o = data.ozet;
+    res.innerHTML = `
+      <div class="alert alert-success">✓ ${data.mesaj}<br>
+      Toplam: ${o.toplam_satir} | Başarılı: ${o.basarili} | Hatalı: ${o.hatali}</div>
+      ${data.hatalar?.length ? `<div class="alert alert-warning">
+        ${data.hatalar.map(h => `Satır ${h.satir}: ${h.hata}`).join('<br>')}
+      </div>` : ''}`;
+    loadUrunler(parseInt(toplamId));
+  } else {
+    res.innerHTML = `<div class="alert alert-danger">✗ ${data.mesaj}</div>`;
+  }
+}
 </script>
 {% endblock %}
+

@@ -49,6 +49,29 @@ def api_ekle():
         return jsonify({'basarili': False, 'mesaj': f'Hata: {str(e)}'}), 500
 
 
+@personeller_bp.route('/api/guncelle/<int:id>', methods=['PUT'])
+def api_guncelle(id):
+    """AJAX ile personel adı güncelle"""
+    try:
+        veri = request.json or {}
+        ad = str(veri.get('ad', '')).strip()
+        if not ad:
+            return jsonify({'basarili': False, 'mesaj': 'Ad boş olamaz!'}), 400
+
+        personel = Personel.query.get(id)
+        if not personel:
+            return jsonify({'basarili': False, 'mesaj': 'Personel bulunamadı!'}), 404
+
+        if Personel.query.filter(Personel.ad == ad, Personel.id != id).first():
+            return jsonify({'basarili': False, 'mesaj': 'Bu isimde başka bir personel var!'}), 409
+
+        personel.ad = ad
+        db.session.commit()
+        return jsonify({'basarili': True, 'mesaj': 'Personel güncellendi!'})
+    except Exception:
+        return jsonify({'basarili': False, 'mesaj': 'İşlem sırasında bir hata oluştu.'}), 500
+
+
 @personeller_bp.route('/api/sil/<int:id>', methods=['DELETE'])
 def api_sil(id):
     """AJAX ile personel sil"""

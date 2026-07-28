@@ -1,12 +1,330 @@
 {% extends 'base.html' %}
 {% block title %}İade Yönetimi{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <h3>İade Yönetimi</h3>
-    <a class="btn btn-outline-primary" href="/iadeler/api/template">İade Şablonu</a>
+
+<div class="page-header">
+  <h1 class="page-title">↩️ İade Yönetimi</h1>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="/iadeler/api/template" class="btn btn-success btn-sm">📥 Şablon İndir</a>
+    <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#iadeExcelModal">📤 Excel Yükle</button>
+    <button class="btn btn-outline-secondary btn-sm" onclick="loadGecmis()">📂 Geçmiş</button>
+    <button class="btn btn-outline-info btn-sm" onclick="showAnalizler()">📊 Analizler</button>
+  </div>
 </div>
-<ul>
-    <li>Yükleme: <code>POST /iadeler/api/excel-yukle</code></li>
-    <li>Liste: <code>GET /iadeler/api/list</code></li>
-</ul>
+
+<!-- Upload Result -->
+<div id="iadeUploadResult" class="mb-3"></div>
+
+<!-- Table -->
+<div class="card mb-3">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table mb-0">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Sipariş No</th>
+            <th>Tarih</th>
+            <th>Ürün</th>
+            <th>Beden</th>
+            <th>Adet</th>
+            <th>İade Sebebi</th>
+            <th>Toplama</th>
+            <th>İşlemler</th>
+          </tr>
+        </thead>
+        <tbody id="iadeBody">
+          <tr><td colspan="9" class="text-center py-4 text-muted">Yükleniyor...</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="p-3" id="iadePagination"></div>
+  </div>
+</div>
+
+<!-- ── Excel Yükle Modal ── -->
+<div class="modal fade" id="iadeExcelModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">📤 İade Excel Yükle</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-info small">
+          <strong>Şablon sütunları:</strong> Siparis No | Tarih | Urun Kodu | Beden | Adet | Sebep
+        </div>
+        <div class="upload-zone" id="iadeUploadZone">
+          <div class="upload-zone-icon">📂</div>
+          <p class="fw-semibold mb-1">Excel dosyasını sürükleyin veya tıklayın</p>
+          <p class="text-muted small upload-filename">Dosya seçilmedi (.xlsx)</p>
+          <input type="file" id="iadeExcelFile" accept=".xlsx,.xlsm" class="d-none">
+        </div>
+        <div id="iadeExcelResult" class="mt-3"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Kapat</button>
+        <button type="button" class="btn btn-primary" onclick="iadeExcelYukle()">🚀 Yükle</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Düzenle Modal ── -->
+<div class="modal fade" id="iadeDuzenleModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">✏️ İade Düzenle</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="iadeDuzenleId">
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label">Beden</label>
+            <input type="text" class="form-control" id="iadeDuzenleBeden">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Adet</label>
+            <input type="number" class="form-control" id="iadeDuzenleAdet" min="1">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">İade Sebebi</label>
+            <input type="text" class="form-control" id="iadeDuzenleSebep">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+        <button type="button" class="btn btn-warning" onclick="iadeGuncelle()">💾 Güncelle</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Analizler Modal ── -->
+<div class="modal fade" id="analizlerModal" tabindex="-1">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">📊 İade Analizleri</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="analizlerBody">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <div class="card">
+              <div class="card-header">🔝 En Fazla İade Edilen Ürünler</div>
+              <div class="card-body p-0">
+                <canvas id="urunIadeChart" height="200"></canvas>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="card">
+              <div class="card-header">📋 İade Nedenleri</div>
+              <div class="card-body p-0">
+                <canvas id="nedenChart" height="200"></canvas>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="card">
+              <div class="card-header">📦 Toplama Bazlı İadeler</div>
+              <div class="card-body" id="toplamIadeTable"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Geçmiş Modal ── -->
+<div class="modal fade" id="iadeGecmisModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">📂 İade Yükleme Geçmişi</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="iadeGecmisBody">Yükleniyor...</div>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
+{% block extra_js %}
+<script>
+initUploadZone('iadeUploadZone', 'iadeExcelFile');
+
+let currentPage = 1;
+
+// ── Load Returns ──────────────────────────────────────
+async function loadIadeler(page = 1) {
+  currentPage = page;
+  const { ok, data } = await apiFetch(`/iadeler/api/list?page=${page}&per_page=20`);
+  if (!ok) return;
+
+  const tbody = document.getElementById('iadeBody');
+  if (!data.kayitlar.length) {
+    tbody.innerHTML = '<tr><td colspan="9" class="text-center py-4 text-muted">Henüz kayıt yok</td></tr>';
+    document.getElementById('iadePagination').innerHTML = '';
+    return;
+  }
+
+  tbody.innerHTML = data.kayitlar.map((row, i) => `
+    <tr>
+      <td class="text-muted">${(page-1)*20 + i + 1}</td>
+      <td><strong>${row.siparis_no}</strong></td>
+      <td>${formatDate(row.tarih)}</td>
+      <td><span class="badge bg-primary-soft text-primary">${row.urun_kodu || '-'}</span></td>
+      <td>${row.beden || '-'}</td>
+      <td>${row.adet}</td>
+      <td>${row.sebep || '-'}</td>
+      <td>${row.toplama || '-'}</td>
+      <td>
+        <button class="btn btn-sm btn-warning" onclick="openIadeDuzenle(${row.id},'${row.beden||''}',${row.adet},'${row.sebep||''}')">✏️</button>
+        <button class="btn btn-sm btn-danger" onclick="iadeSil(${row.id})">🗑️</button>
+      </td>
+    </tr>`).join('');
+
+  renderPagination('iadePagination', page, Math.ceil(data.toplam / 20), loadIadeler);
+}
+
+// ── Excel Upload ──────────────────────────────────────
+async function iadeExcelYukle() {
+  const file = document.getElementById('iadeExcelFile').files[0];
+  if (!file) { showAlert('warning', 'Dosya seçin!'); return; }
+
+  const fd = new FormData();
+  fd.append('file', file);
+  setLoading(true);
+  const { ok, data } = await apiFetch('/iadeler/api/excel-yukle', { method: 'POST', body: fd });
+  setLoading(false);
+
+  const res = document.getElementById('iadeExcelResult');
+  if (data.basarili) {
+    const o = data.ozet;
+    res.innerHTML = `
+      <div class="alert alert-success">✓ ${data.mesaj}<br>
+      Toplam: ${o.toplam_satir} | Başarılı: ${o.islenen_satir} | Hatalı: ${o.hatali_satir}
+      </div>`;
+    loadIadeler(1);
+  } else {
+    res.innerHTML = `<div class="alert alert-danger">✗ ${data.mesaj}</div>`;
+  }
+}
+
+// ── Edit / Delete ─────────────────────────────────────
+function openIadeDuzenle(id, beden, adet, sebep) {
+  document.getElementById('iadeDuzenleId').value = id;
+  document.getElementById('iadeDuzenleBeden').value = beden;
+  document.getElementById('iadeDuzenleAdet').value = adet;
+  document.getElementById('iadeDuzenleSebep').value = sebep;
+  new bootstrap.Modal(document.getElementById('iadeDuzenleModal')).show();
+}
+
+async function iadeGuncelle() {
+  const id = document.getElementById('iadeDuzenleId').value;
+  setLoading(true);
+  const { data } = await apiFetch(`/iadeler/api/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      beden: document.getElementById('iadeDuzenleBeden').value,
+      adet: document.getElementById('iadeDuzenleAdet').value,
+      sebebi: document.getElementById('iadeDuzenleSebep').value,
+    })
+  });
+  setLoading(false);
+  if (data.basarili) {
+    showAlert('success', '✓ ' + data.mesaj);
+    bootstrap.Modal.getInstance(document.getElementById('iadeDuzenleModal')).hide();
+    loadIadeler(currentPage);
+  } else {
+    showAlert('danger', '✗ ' + data.mesaj);
+  }
+}
+
+function iadeSil(id) {
+  confirmAction('Bu iade silinecek. Emin misiniz?', async () => {
+    setLoading(true);
+    const { data } = await apiFetch(`/iadeler/api/${id}`, { method: 'DELETE' });
+    setLoading(false);
+    if (data.basarili) {
+      showAlert('success', '✓ Silindi');
+      loadIadeler(currentPage);
+    } else {
+      showAlert('danger', '✗ ' + data.mesaj);
+    }
+  });
+}
+
+// ── Analizler ─────────────────────────────────────────
+let chartsLoaded = false;
+
+async function showAnalizler() {
+  new bootstrap.Modal(document.getElementById('analizlerModal')).show();
+  if (chartsLoaded) return;
+
+  const { data } = await apiFetch('/iadeler/api/analizler');
+  if (!data.basarili) return;
+
+  // Ürün İade Chart
+  new Chart(document.getElementById('urunIadeChart'), {
+    type: 'bar',
+    data: {
+      labels: data.urun_iadeleri.map(u => u.kod),
+      datasets: [{ label: 'İade Adeti', data: data.urun_iadeleri.map(u => u.adet),
+        backgroundColor: 'rgba(99,102,241,0.75)' }]
+    },
+    options: { responsive: true, plugins: { legend: { display: false } } }
+  });
+
+  // Neden Chart
+  new Chart(document.getElementById('nedenChart'), {
+    type: 'doughnut',
+    data: {
+      labels: data.iade_nedenleri.map(n => n.sebep),
+      datasets: [{ data: data.iade_nedenleri.map(n => n.adet),
+        backgroundColor: ['#6366f1','#10b981','#f59e0b','#ef4444','#8b5cf6','#3b82f6'] }]
+    },
+    options: { responsive: true }
+  });
+
+  // Toplama Table
+  const tt = document.getElementById('toplamIadeTable');
+  tt.innerHTML = `<table class="table table-sm mb-0">
+    <thead><tr><th>Toplama</th><th>İade Adeti</th></tr></thead>
+    <tbody>${data.toplama_iadeleri.map(t => `<tr><td>${t.toplama}</td><td>${t.adet}</td></tr>`).join('')}</tbody>
+  </table>`;
+
+  chartsLoaded = true;
+}
+
+// ── Geçmiş ───────────────────────────────────────────
+async function loadGecmis() {
+  const { data } = await apiFetch('/iadeler/api/gecmis');
+  const body = document.getElementById('iadeGecmisBody');
+  if (!data.basarili || !data.gecmis.length) {
+    body.innerHTML = '<p class="text-muted text-center py-3">Geçmiş bulunamadı</p>';
+  } else {
+    body.innerHTML = `<table class="table table-sm">
+      <thead><tr><th>Dosya</th><th>Tarih</th><th>Toplam</th><th>Başarılı</th><th>Hatalı</th></tr></thead>
+      <tbody>${data.gecmis.map(g => `<tr>
+        <td>${g.dosya_adi}</td><td>${g.yukleme_tarihi}</td>
+        <td>${g.toplam_satir}</td><td class="text-success">${g.basarili}</td>
+        <td class="text-danger">${g.basarisiz}</td>
+      </tr>`).join('')}</tbody>
+    </table>`;
+  }
+  new bootstrap.Modal(document.getElementById('iadeGecmisModal')).show();
+}
+
+// Initial load
+loadIadeler(1);
+</script>
+{% endblock %}
+
