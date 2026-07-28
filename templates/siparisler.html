@@ -294,17 +294,41 @@ async function loadGecmis() {
     body.innerHTML = '<p class="text-muted text-center py-3">Geçmiş bulunamadı</p>';
   } else {
     body.innerHTML = `<table class="table table-sm">
-      <thead><tr><th>Dosya</th><th>Tarih</th><th>Toplam</th><th>Başarılı</th><th>Hatalı</th></tr></thead>
+      <thead><tr><th>Dosya</th><th>Tarih</th><th>Toplam</th><th>Başarılı</th><th>Hatalı</th><th>Durum</th><th>İşlem</th></tr></thead>
       <tbody>${data.gecmis.map(g => `<tr>
         <td>${g.dosya_adi}</td>
         <td>${g.yukleme_tarihi}</td>
         <td>${g.toplam_satir}</td>
         <td class="text-success">${g.basarili}</td>
         <td class="text-danger">${g.basarisiz}</td>
+        <td>
+          ${g.durum === 'KONTROL_EDILDI'
+            ? `<span class="badge bg-success">✓ Kontrol Edildi</span>${g.kontrol_tarihi ? `<br><small class="text-muted">${g.kontrol_tarihi}</small>` : ''}`
+            : '<span class="badge bg-warning text-dark">Bekliyor</span>'}
+        </td>
+        <td>
+          ${g.durum !== 'KONTROL_EDILDI'
+            ? `<button class="btn btn-sm btn-success" onclick="kontrolEt(${g.id}, this)">✔ Kontrol Edildi</button>`
+            : '<span class="text-muted small">—</span>'}
+        </td>
       </tr>`).join('')}</tbody>
     </table>`;
   }
   new bootstrap.Modal(document.getElementById('gecmisModal')).show();
+}
+
+async function kontrolEt(uploadId, btn) {
+  btn.disabled = true;
+  btn.textContent = '⏳ İşleniyor...';
+  const { data } = await apiFetch(`/siparisler/api/kontrol-edildi/${uploadId}`, { method: 'POST' });
+  if (data.basarili) {
+    showAlert('success', '✓ ' + data.mesaj);
+    loadGecmis();
+  } else {
+    btn.disabled = false;
+    btn.textContent = '✔ Kontrol Edildi';
+    showAlert('danger', '✗ ' + data.mesaj);
+  }
 }
 
 // Initial load

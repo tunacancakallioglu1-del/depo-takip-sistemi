@@ -10,7 +10,7 @@
 
 <!-- Stat Cards Row -->
 <div class="row g-3 mb-4">
-  <div class="col-6 col-md-2">
+  <div class="col-6 col-md-3">
     <div class="card stat-card h-100">
       <div class="card-body">
         <div class="stat-label">Günlük Sipariş</div>
@@ -19,16 +19,7 @@
       </div>
     </div>
   </div>
-  <div class="col-6 col-md-2">
-    <div class="card stat-card success h-100">
-      <div class="card-body">
-        <div class="stat-label">Günlük Ürün</div>
-        <div class="stat-value mt-1" id="dailyItems">{{ metrics.daily_items }}</div>
-        <div class="stat-icon">📦</div>
-      </div>
-    </div>
-  </div>
-  <div class="col-6 col-md-2">
+  <div class="col-6 col-md-3">
     <div class="card stat-card info h-100">
       <div class="card-body">
         <div class="stat-label">Aktif Personel</div>
@@ -37,25 +28,16 @@
       </div>
     </div>
   </div>
-  <div class="col-6 col-md-2">
-    <div class="card stat-card warning h-100">
+  <div class="col-6 col-md-3">
+    <div class="card stat-card success h-100">
       <div class="card-body">
-        <div class="stat-label">Tanımsız Ürün</div>
-        <div class="stat-value mt-1" id="undefinedProducts">{{ metrics.undefined_products }}</div>
-        <div class="stat-icon">⚠️</div>
+        <div class="stat-label">Toplam Toplama</div>
+        <div class="stat-value mt-1">{{ toplamalar | length }}</div>
+        <div class="stat-icon">📦</div>
       </div>
     </div>
   </div>
-  <div class="col-6 col-md-2">
-    <div class="card stat-card warning h-100">
-      <div class="card-body">
-        <div class="stat-label">Tanımsız Beden</div>
-        <div class="stat-value mt-1" id="undefinedSizes">{{ metrics.undefined_sizes }}</div>
-        <div class="stat-icon">📏</div>
-      </div>
-    </div>
-  </div>
-  <div class="col-6 col-md-2">
+  <div class="col-6 col-md-3">
     <div class="card stat-card error h-100">
       <div class="card-body">
         <div class="stat-label">İade Oranı</div>
@@ -66,28 +48,128 @@
   </div>
 </div>
 
-<!-- Charts Row -->
+<!-- Charts + Hızlı Erişim Row -->
 <div class="row g-3 mb-4">
-  <div class="col-md-8">
+  <div class="col-md-7">
     <div class="card h-100">
       <div class="card-header">📈 Son 7 Gün Sipariş Trendi</div>
-      <div class="card-body">
-        <div class="chart-wrapper">
-          <canvas id="ordersChart"></canvas>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table mb-0">
+            <thead>
+              <tr>
+                {% for d in last_7_days %}<th class="text-center">{{ d.date }}</th>{% endfor %}
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                {% for d in last_7_days %}
+                <td class="text-center fw-bold {{ 'text-primary' if d.orders > 0 else 'text-muted' }}">{{ d.orders }}</td>
+                {% endfor %}
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
   </div>
-  <div class="col-md-4">
+
+  <!-- HIZLI ERİŞİM -->
+  <div class="col-md-5">
     <div class="card h-100">
-      <div class="card-header">🎯 Hızlı Erişim</div>
-      <div class="card-body d-flex flex-column gap-2">
-        <a href="/kayitlar/" class="btn btn-outline-primary text-start">📋 Kayıtlar</a>
-        <a href="/kayitlar/api/template" class="btn btn-outline-success text-start">📥 Kayıt Şablonu İndir</a>
-        <a href="/siparisler/" class="btn btn-outline-primary text-start">🛒 Siparişler</a>
-        <a href="/siparisler/api/template" class="btn btn-outline-success text-start">📥 Sipariş Şablonu İndir</a>
-        <a href="/iadeler/" class="btn btn-outline-primary text-start">↩️ İadeler</a>
-        <a href="/raporlar/" class="btn btn-outline-primary text-start">📈 Raporlar</a>
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>⚡ Hızlı Erişim</span>
+        <div class="btn-group btn-group-sm">
+          <button class="btn btn-outline-success active" id="tabEkle" onclick="switchTab('ekle')">➕ Ekle</button>
+          <button class="btn btn-outline-danger" id="tabCikar" onclick="switchTab('cikar')">➖ Çıkar</button>
+        </div>
+      </div>
+      <div class="card-body" style="max-height:320px;overflow-y:auto;">
+
+        <!-- EKLE PANEL -->
+        <div id="panelEkle">
+          <!-- Toplamalar -->
+          <div class="mb-2">
+            <button class="btn btn-sm btn-outline-secondary w-100 text-start d-flex justify-content-between"
+                    onclick="toggleCategory('catToplamalar')">
+              <span>📦 Toplamalar</span><span id="iconCatToplamalar">▼</span>
+            </button>
+            <div id="catToplamalar" class="ps-2 pt-1">
+              {% for t in toplamalar %}
+              <div class="form-check">
+                <input class="form-check-input ekle-check" type="checkbox"
+                       data-type="toplama" data-id="{{ t.id }}" data-ad="{{ t.ad }}"
+                       id="ckTop{{ t.id }}">
+                <label class="form-check-label small" for="ckTop{{ t.id }}">{{ t.ad }}</label>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+          <!-- Personeller -->
+          <div class="mb-2">
+            <button class="btn btn-sm btn-outline-secondary w-100 text-start d-flex justify-content-between"
+                    onclick="toggleCategory('catPersonel')">
+              <span>👥 Personeller</span><span id="iconCatPersonel">▼</span>
+            </button>
+            <div id="catPersonel" class="ps-2 pt-1" style="display:none">
+              {% for p in personeller %}
+              <div class="form-check">
+                <input class="form-check-input ekle-check" type="checkbox"
+                       data-type="personel" data-id="{{ p.id }}" data-ad="{{ p.ad }}"
+                       id="ckPer{{ p.id }}">
+                <label class="form-check-label small" for="ckPer{{ p.id }}">{{ p.ad }}</label>
+              </div>
+              {% endfor %}
+              {% if not personeller %}<p class="text-muted small">Henüz personel yok</p>{% endif %}
+            </div>
+          </div>
+          <!-- Ürünler -->
+          <div class="mb-2">
+            <button class="btn btn-sm btn-outline-secondary w-100 text-start d-flex justify-content-between"
+                    onclick="toggleCategory('catUrun')">
+              <span>📝 Ürünler</span><span id="iconCatUrun">▼</span>
+            </button>
+            <div id="catUrun" class="ps-2 pt-1" style="display:none">
+              {% for u in urunler %}
+              <div class="form-check">
+                <input class="form-check-input ekle-check" type="checkbox"
+                       data-type="urun" data-id="{{ u.id }}" data-ad="{{ u.ana_kod }}"
+                       id="ckUrun{{ u.id }}">
+                <label class="form-check-label small" for="ckUrun{{ u.id }}">{{ u.ana_kod }}</label>
+              </div>
+              {% endfor %}
+              {% if not urunler %}<p class="text-muted small">Henüz ürün yok</p>{% endif %}
+            </div>
+          </div>
+          <!-- Bedenler -->
+          <div class="mb-2">
+            <button class="btn btn-sm btn-outline-secondary w-100 text-start d-flex justify-content-between"
+                    onclick="toggleCategory('catBeden')">
+              <span>📐 Bedenler</span><span id="iconCatBeden">▼</span>
+            </button>
+            <div id="catBeden" class="ps-2 pt-1" style="display:none">
+              {% for b in bedenler %}
+              <div class="form-check">
+                <input class="form-check-input ekle-check" type="checkbox"
+                       data-type="beden" data-id="{{ b }}" data-ad="{{ b }}"
+                       id="ckBeden{{ loop.index }}">
+                <label class="form-check-label small" for="ckBeden{{ loop.index }}">{{ b }}</label>
+              </div>
+              {% endfor %}
+              {% if not bedenler %}<p class="text-muted small">Henüz beden yok</p>{% endif %}
+            </div>
+          </div>
+          <button class="btn btn-success btn-sm w-100 mt-2" onclick="secilenleriEkle()">✅ Seçilenleri Ekle</button>
+        </div>
+
+        <!-- ÇIKAR PANEL -->
+        <div id="panelCikar" style="display:none">
+          <div id="hizliListesi">
+            <p class="text-muted text-center small py-2" id="listeBosMesaj">Eklenmiş öğe yok</p>
+          </div>
+          <button class="btn btn-danger btn-sm w-100 mt-2" onclick="secilenleriCikar()">❌ Seçilenleri Çıkar</button>
+        </div>
+
       </div>
     </div>
   </div>
@@ -118,7 +200,7 @@
   </div>
   <div class="col-md-6">
     <div class="card">
-      <div class="card-header">📊 Aylık Bölüm</div>
+      <div class="card-header">📊 Günlük İşlemler</div>
       <div class="card-body">
         <div class="row g-2">
           <div class="col-6">
@@ -142,52 +224,89 @@
 {% endblock %}
 {% block extra_js %}
 <script>
-const labels = {{ last_7_days | map(attribute='date') | list | tojson }};
-const values = {{ last_7_days | map(attribute='orders') | list | tojson }};
+// ── Hızlı Erişim — localStorage tabanlı liste ─────────────
+const STORAGE_KEY = 'hizliErisimListesi';
 
-const ctx = document.getElementById('ordersChart').getContext('2d');
-new Chart(ctx, {
-  type: 'line',
-  data: {
-    labels: labels,
-    datasets: [{
-      label: 'Sipariş Sayısı',
-      data: values,
-      borderColor: '#6366f1',
-      backgroundColor: 'rgba(99,102,241,0.1)',
-      borderWidth: 3,
-      fill: true,
-      tension: 0.4,
-      pointBackgroundColor: '#6366f1',
-      pointRadius: 5,
-      pointHoverRadius: 8,
-    }]
-  },
-  options: {
-    responsive: true,
-    plugins: {
-      legend: { display: false },
-      tooltip: {
-        backgroundColor: 'rgba(99,102,241,0.9)',
-        titleColor: '#fff',
-        bodyColor: '#fff',
-        padding: 12,
-        cornerRadius: 10,
-      }
-    },
-    scales: {
-      y: {
-        beginAtZero: true,
-        grid: { color: 'rgba(99,102,241,0.08)' },
-        ticks: { color: '#6b7280' }
-      },
-      x: {
-        grid: { display: false },
-        ticks: { color: '#6b7280' }
-      }
+function getList() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; } catch { return []; }
+}
+function saveList(list) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+}
+
+function switchTab(tab) {
+  const isEkle = tab === 'ekle';
+  document.getElementById('panelEkle').style.display = isEkle ? '' : 'none';
+  document.getElementById('panelCikar').style.display = isEkle ? 'none' : '';
+  document.getElementById('tabEkle').classList.toggle('active', isEkle);
+  document.getElementById('tabCikar').classList.toggle('active', !isEkle);
+  if (!isEkle) renderCikarListesi();
+}
+
+function toggleCategory(id) {
+  const el = document.getElementById(id);
+  const icon = document.getElementById('icon' + id.charAt(0).toUpperCase() + id.slice(1));
+  const hidden = el.style.display === 'none';
+  el.style.display = hidden ? '' : 'none';
+  if (icon) icon.textContent = hidden ? '▲' : '▼';
+}
+
+function secilenleriEkle() {
+  const checks = document.querySelectorAll('.ekle-check:checked');
+  if (!checks.length) { showAlert('warning', 'Lütfen en az bir öğe seçin!'); return; }
+
+  const list = getList();
+  let eklendi = 0;
+  checks.forEach(c => {
+    const key = c.dataset.type + '_' + c.dataset.id;
+    if (!list.find(x => x.key === key)) {
+      list.push({ key, type: c.dataset.type, id: c.dataset.id, ad: c.dataset.ad });
+      eklendi++;
     }
+    c.checked = false;
+  });
+  saveList(list);
+  showAlert('success', `✓ ${eklendi} öğe listeye eklendi!`);
+}
+
+function renderCikarListesi() {
+  const list = getList();
+  const container = document.getElementById('hizliListesi');
+  const bosMsg = document.getElementById('listeBosMesaj');
+
+  if (!list.length) {
+    container.innerHTML = '<p class="text-muted text-center small py-2" id="listeBosMesaj">Eklenmiş öğe yok</p>';
+    return;
   }
-});
+
+  const typeIcons = { toplama: '📦', personel: '👥', urun: '📝', beden: '📐' };
+  container.innerHTML = list.map((item, idx) => `
+    <div class="d-flex align-items-center justify-content-between py-1 border-bottom">
+      <div class="d-flex align-items-center gap-2">
+        <input type="checkbox" class="form-check-input cikar-check" data-idx="${idx}">
+        <span class="small">${typeIcons[item.type] || '•'} ${item.ad}</span>
+      </div>
+      <button class="btn btn-sm btn-outline-danger py-0 px-1" onclick="tekSilItem(${idx})">−</button>
+    </div>`).join('');
+}
+
+function secilenleriCikar() {
+  const checks = document.querySelectorAll('.cikar-check:checked');
+  if (!checks.length) { showAlert('warning', 'Lütfen çıkarılacak öğeleri seçin!'); return; }
+
+  const idxs = new Set([...checks].map(c => parseInt(c.dataset.idx)));
+  const list = getList().filter((_, i) => !idxs.has(i));
+  saveList(list);
+  showAlert('info', `${idxs.size} öğe listeden çıkarıldı.`);
+  renderCikarListesi();
+}
+
+function tekSilItem(idx) {
+  const list = getList();
+  list.splice(idx, 1);
+  saveList(list);
+  renderCikarListesi();
+}
 
 // Auto-refresh metrics every 30s
 setInterval(async () => {
@@ -195,7 +314,6 @@ setInterval(async () => {
     const res = await fetch('/api/dashboard-metrics');
     const data = await res.json();
     document.getElementById('dailyOrders').textContent = data.daily_orders;
-    document.getElementById('dailyItems').textContent = data.daily_items;
     document.getElementById('activePersonnel').textContent = data.active_personnel;
     document.getElementById('returnRate').textContent = `%${data.return_rate}`;
   } catch {}

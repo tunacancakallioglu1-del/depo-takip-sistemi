@@ -3,11 +3,37 @@
 {% block content %}
 
 <div class="page-header">
-  <h1 class="page-title">📋 Günlük Kayıtlar</h1>
+  <h1 class="page-title">📋 Kayıtlar</h1>
   <div class="d-flex gap-2 flex-wrap">
     <a href="/kayitlar/api/template" class="btn btn-success btn-sm">📥 Şablon İndir</a>
-    <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#excelModal">📤 Excel Yükle</button>
+    <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#excelModal">📤 Şablon Yükle</button>
+    <button class="btn btn-warning btn-sm" id="senkronizeBtn" onclick="senkronizeEt()">🔄 Senkronize Et</button>
     <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#ekleModal">➕ Manuel Ekle</button>
+  </div>
+</div>
+
+<!-- Senkronizasyon Bilgi Paneli -->
+<div class="card mb-3 border-warning">
+  <div class="card-header bg-warning bg-opacity-10">
+    <strong>🔄 Senkronizasyon — Siparişlerden Otomatik Çekme</strong>
+  </div>
+  <div class="card-body py-2">
+    <div class="row g-2 align-items-center">
+      <div class="col-md-4">
+        <label class="form-label small mb-1">Senkronizasyon Tarihi</label>
+        <input type="date" class="form-control form-control-sm" id="senkTarih">
+      </div>
+      <div class="col-md-4">
+        <div class="alert alert-info py-1 px-2 small mb-0">
+          ℹ Bugünün senkronize edilmemiş siparişlerini Trendyol Sipariş olarak Kayıtlara aktarır.
+          Aynı personel+toplama kaydı varsa üzerine ekleme yapar.
+        </div>
+      </div>
+      <div class="col-md-4">
+        <button class="btn btn-warning btn-sm w-100" onclick="senkronizeEt()">🔄 Senkronize Et</button>
+      </div>
+    </div>
+    <div id="senkResult" class="mt-2"></div>
   </div>
 </div>
 
@@ -209,7 +235,7 @@
   <div class="modal-dialog">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title">📤 Excel ile Toplu Kayıt</h5>
+        <h5 class="modal-title">📤 Şablon ile Toplu Kayıt</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
@@ -237,6 +263,35 @@
 <script>
 // Upload zone drag-drop
 initUploadZone('uploadZone', 'excelFile');
+
+// Set today's date as default for sync
+document.addEventListener('DOMContentLoaded', () => {
+  const today = new Date().toISOString().slice(0, 10);
+  document.getElementById('senkTarih').value = today;
+  document.getElementById('eTarih').value = today;
+});
+
+// ── Senkronize Et ────────────────────────────────────────
+async function senkronizeEt() {
+  const tarih = document.getElementById('senkTarih').value;
+  setLoading(true);
+  const { ok, data } = await apiFetch('/kayitlar/api/senkronize', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tarih: tarih || undefined }),
+  });
+  setLoading(false);
+
+  const res = document.getElementById('senkResult');
+  if (data.basarili) {
+    res.innerHTML = `<div class="alert alert-success py-1">✓ ${data.mesaj}</div>`;
+    showAlert('success', '✓ ' + data.mesaj);
+    setTimeout(() => location.reload(), 1200);
+  } else {
+    res.innerHTML = `<div class="alert alert-danger py-1">✗ ${data.mesaj}</div>`;
+    showAlert('danger', '✗ ' + data.mesaj);
+  }
+}
 
 // ── Kayıt Ekle ──────────────────────────────────────────
 async function kayitEkle() {
@@ -272,7 +327,6 @@ async function kayitEkle() {
 document.querySelectorAll('.editBtn').forEach(btn => {
   btn.addEventListener('click', () => {
     document.getElementById('dId').value = btn.dataset.id;
-    // Tarih formatı: DD.MM.YYYY → YYYY-MM-DD
     const parts = btn.dataset.tarih.split('.');
     document.getElementById('dTarih').value = parts.length === 3 ? `${parts[2]}-${parts[1]}-${parts[0]}` : btn.dataset.tarih;
     document.getElementById('dPersonel').value = btn.dataset.personel;
@@ -362,4 +416,3 @@ async function excelYukle() {
 }
 </script>
 {% endblock %}
-
