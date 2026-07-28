@@ -131,29 +131,37 @@ def iade_analiz():
 def prim_raporu():
     """Personel bazlı prim raporu"""
     prim_siparis = float(request.args.get('prim_siparis', 0))
-    prim_urun = float(request.args.get('prim_urun', 0))
+    order_counts = db.session.query(
+        Order.personel_id.label('personel_id'),
+        func.count(func.distinct(Order.siparis_no)).label('siparis_sayisi'),
+    ).filter(Order.personel_id.isnot(None)).group_by(Order.personel_id).subquery()
+
+    return_counts = db.session.query(
+        Order.personel_id.label('personel_id'),
+        func.count(func.distinct(Return.siparis_no)).label('iade_sayisi'),
+    ).join(Return, Return.siparis_no == Order.siparis_no
+    ).filter(Order.personel_id.isnot(None)
+    ).group_by(Order.personel_id).subquery()
 
     personel_query = db.session.query(
         Personel.id,
         Personel.ad.label('personel'),
-        func.count(func.distinct(Order.siparis_no)).label('siparis_sayisi'),
-        func.coalesce(func.sum(Order.adet), 0).label('urun_sayisi'),
-        func.count(func.distinct(Return.id)).label('iade_sayisi'),
-    ).outerjoin(Order, Order.personel_id == Personel.id
-    ).outerjoin(Return, Return.siparis_no == Order.siparis_no
-    ).group_by(Personel.id)
+        func.coalesce(order_counts.c.siparis_sayisi, 0).label('siparis_sayisi'),
+        func.coalesce(return_counts.c.iade_sayisi, 0).label('iade_sayisi'),
+    ).outerjoin(order_counts, order_counts.c.personel_id == Personel.id
+    ).outerjoin(return_counts, return_counts.c.personel_id == Personel.id)
 
     rows = []
     for row in personel_query.all():
         siparis = int(row.siparis_sayisi)
-        urun = int(row.urun_sayisi)
         iade = int(row.iade_sayisi)
-        prim = siparis * prim_siparis + urun * prim_urun
+        iade_orani = round((iade / siparis) * 100, 2) if siparis else 0
+        prim = siparis * prim_siparis
         rows.append({
             'personel': row.personel,
             'siparis_sayisi': siparis,
-            'urun_sayisi': urun,
             'iade_sayisi': iade,
+            'iade_orani': iade_orani,
             'prim': round(prim, 2),
         })
 

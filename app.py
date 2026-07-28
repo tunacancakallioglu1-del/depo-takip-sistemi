@@ -5,7 +5,7 @@ Ana Flask Uygulaması
 """
 
 from flask import Flask
-from database import db, ilk_toplamalar_olustur
+from database import db, ilk_toplamalar_olustur, ensure_schema_updates
 from config import config
 
 
@@ -19,6 +19,7 @@ def create_app(config_name='development'):
 
     with app.app_context():
         db.create_all()
+        ensure_schema_updates()
         ilk_toplamalar_olustur()
 
     register_routes(app)

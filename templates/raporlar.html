@@ -144,10 +144,6 @@
             <input type="number" class="form-control" id="primSiparis" value="0" min="0" step="0.01">
           </div>
           <div class="col-md-4">
-            <label class="form-label">Ürün Başına Prim (₺)</label>
-            <input type="number" class="form-control" id="primUrun" value="0" min="0" step="0.01">
-          </div>
-          <div class="col-md-4">
             <button class="btn btn-primary w-100" onclick="loadPrimRapor()">🔢 Hesapla</button>
           </div>
         </div>
@@ -162,7 +158,7 @@
         <div class="table-responsive">
           <table class="table mb-0">
             <thead>
-              <tr><th>Personel</th><th>Sipariş</th><th>Ürün</th><th>İade</th><th>Prim (₺)</th></tr>
+              <tr><th>Personel</th><th>Sipariş</th><th>İade</th><th>İade Oranı</th><th>Prim (₺)</th></tr>
             </thead>
             <tbody id="primBody">
               <tr><td colspan="5" class="text-center py-3 text-muted">Hesaplayın...</td></tr>
@@ -201,7 +197,7 @@ async function loadPersonelRapor() {
         { label: 'Ürün', data: data.veri.map(r => r.urun_sayisi), backgroundColor: 'rgba(16,185,129,0.75)' },
       ]
     },
-    options: { responsive: true, plugins: { legend: { position: 'top' } } }
+    options: { responsive: true, animation: false, plugins: { legend: { position: 'top' } } }
   });
 }
 
@@ -244,7 +240,7 @@ async function loadIadeAnaliz() {
       datasets: [{ data: data.veri.map(r => r.adet),
         backgroundColor: ['#6366f1','#10b981','#f59e0b','#ef4444','#8b5cf6','#3b82f6','#ec4899'] }]
     },
-    options: { responsive: true }
+    options: { responsive: true, animation: false }
   });
 }
 
@@ -265,8 +261,7 @@ async function loadGunlukRapor() {
 
 async function loadPrimRapor() {
   const ps = document.getElementById('primSiparis').value || 0;
-  const pu = document.getElementById('primUrun').value || 0;
-  const { data } = await apiFetch(`/raporlar/api/prim?prim_siparis=${ps}&prim_urun=${pu}`);
+  const { data } = await apiFetch(`/raporlar/api/prim?prim_siparis=${ps}`);
   if (!data.basarili) return;
 
   let toplam = 0;
@@ -275,8 +270,8 @@ async function loadPrimRapor() {
     return `<tr>
       <td><strong>${row.personel}</strong></td>
       <td>${formatNumber(row.siparis_sayisi)}</td>
-      <td>${formatNumber(row.urun_sayisi)}</td>
       <td>${formatNumber(row.iade_sayisi)}</td>
+      <td>%${row.iade_orani.toFixed(2)}</td>
       <td><strong class="text-success">${row.prim.toFixed(2)} ₺</strong></td>
     </tr>`;
   }).join('') + `<tr class="table-active fw-bold">
@@ -289,4 +284,3 @@ async function loadPrimRapor() {
 loadPersonelRapor();
 </script>
 {% endblock %}
-

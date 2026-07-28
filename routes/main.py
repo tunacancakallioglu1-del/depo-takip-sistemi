@@ -3,7 +3,7 @@
 
 from datetime import datetime, timedelta
 from flask import Blueprint, render_template, request, jsonify
-from sqlalchemy import func
+from sqlalchemy import and_, func
 from database import (
     db,
     Personel,
@@ -23,11 +23,9 @@ def index():
     """Dashboard"""
     today = datetime.utcnow().date()
     today_start = datetime.combine(today, datetime.min.time())
+    toplam_toplama = db.session.query(func.count(Toplama.id)).scalar() or 11
 
     daily_orders = db.session.query(func.count(func.distinct(Order.siparis_no))).filter(Order.tarih >= today_start).scalar() or 0
-    daily_items = db.session.query(func.coalesce(func.sum(Order.adet), 0)).filter(Order.tarih >= today_start).scalar() or 0
-    undefined_products = 0
-    undefined_sizes = 0
 
     active_personnel = db.session.query(func.count(func.distinct(Order.personel_id))).filter(
         Order.tarih >= today_start,
@@ -47,14 +45,39 @@ def index():
 
     metrics = {
         'daily_orders': daily_orders,
-        'daily_items': int(daily_items),
         'active_personnel': active_personnel,
-        'undefined_products': undefined_products,
-        'undefined_sizes': undefined_sizes,
         'return_rate': _calculate_return_rate(),
     }
 
-    return render_template('dashboard.html', metrics=metrics, last_7_days=last_7_days)
+    personel_durum = []
+    processed_rows = db.session.query(
+        Personel.id,
+        Personel.ad,
+        func.count(func.distinct(Kayit.toplama_id)).label('islenen'),
+    ).outerjoin(
+        Kayit,
+        and_(Kayit.personel_id == Personel.id, Kayit.tarih == today.strftime('%d.%m.%Y'))
+    ).group_by(Personel.id).order_by(Personel.ad.asc()).all()
+
+    for row in processed_rows:
+        islenen = int(row.islenen or 0)
+        islenmeyen = max(toplam_toplama - islenen, 0)
+        yuzde = round((islenen / toplam_toplama) * 100, 1) if toplam_toplama else 0
+        personel_durum.append({
+            'personel': row.ad,
+            'islenen': islenen,
+            'islenmeyen': islenmeyen,
+            'toplam': toplam_toplama,
+            'yuzde': yuzde,
+        })
+
+    return render_template(
+        'dashboard.html',
+        metrics=metrics,
+        last_7_days=last_7_days,
+        personel_durum=personel_durum,
+        toplam_toplama=toplam_toplama,
+    )
 
 
 def _calculate_return_rate():
@@ -71,13 +94,10 @@ def dashboard_metrics():
     today_start = datetime.combine(today, datetime.min.time())
     return jsonify({
         'daily_orders': db.session.query(func.count(func.distinct(Order.siparis_no))).filter(Order.tarih >= today_start).scalar() or 0,
-        'daily_items': int(db.session.query(func.coalesce(func.sum(Order.adet), 0)).filter(Order.tarih >= today_start).scalar() or 0),
         'active_personnel': db.session.query(func.count(func.distinct(Order.personel_id))).filter(
             Order.tarih >= today_start,
             Order.personel_id.isnot(None)
         ).scalar() or 0,
-        'undefined_products': 0,
-        'undefined_sizes': 0,
         'return_rate': _calculate_return_rate(),
     })
 

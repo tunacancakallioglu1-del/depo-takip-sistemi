@@ -5,6 +5,7 @@ Veritabanı Modelleri ve İşlemleri
 
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
+from sqlalchemy import inspect, text
 
 
 db = SQLAlchemy()
@@ -70,6 +71,7 @@ class Kayit(db.Model):
     trendyol_fatura = db.Column(db.Float, default=0)
     diger_pazar = db.Column(db.Float, default=0)
     not_alan = db.Column(db.Text, default='')
+    senkronizasyon_sayisi = db.Column(db.Integer, default=0, nullable=False)
     eklenme_tarihi = db.Column(db.DateTime, default=datetime.now)
 
     def __repr__(self):
@@ -86,7 +88,8 @@ class Kayit(db.Model):
             'trendyol_siparis': self.trendyol_siparis,
             'trendyol_fatura': self.trendyol_fatura,
             'diger_pazar': self.diger_pazar,
-            'not': self.not_alan
+            'not': self.not_alan,
+            'senkronizasyon_sayisi': self.senkronizasyon_sayisi,
         }
 
 
@@ -108,6 +111,7 @@ class Product(db.Model):
     marka = db.Column(db.String(120), nullable=False)
     toplama_id = db.Column(db.Integer, db.ForeignKey('toplamalar.id'), nullable=False)
     beden_ayrimi = db.Column(db.Boolean, default=False, nullable=False)
+    adet_tipi = db.Column(db.String(20), default='Karma', nullable=False)
     durum = db.Column(db.Boolean, default=True, nullable=False)
     olusturulma_tarihi = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     son_guncelleme_tarihi = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
@@ -126,6 +130,7 @@ class Product(db.Model):
             'toplama_id': self.toplama_id,
             'toplama': self.toplama.ad if self.toplama else None,
             'beden_ayrimi': self.beden_ayrimi,
+            'adet_tipi': self.adet_tipi,
             'durum': self.durum,
         }
 
@@ -238,6 +243,10 @@ class ExcelUpload(db.Model):
     toplam_satir = db.Column(db.Integer, default=0, nullable=False)
     basarili = db.Column(db.Integer, default=0, nullable=False)
     basarisiz = db.Column(db.Integer, default=0, nullable=False)
+    status = db.Column(db.String(30), default='KONTROL_EDILMEDI', nullable=False)
+    veri_aktarimi_yapildi = db.Column(db.Boolean, default=False, nullable=False)
+    preview_data = db.Column(db.Text, nullable=True)
+    hata_sebebi = db.Column(db.Text, nullable=True)
 
     orders = db.relationship('Order', backref='excel_upload', lazy=True)
     returns = db.relationship('Return', backref='excel_upload', lazy=True)
@@ -272,6 +281,37 @@ def ilk_toplamalar_olustur():
 
         db.session.commit()
         print("✓ Otomatik Toplamalar (1-11) oluşturuldu")
+
+
+def ensure_schema_updates():
+    """Var olan veritabanına eksik kolonları güvenli şekilde ekle."""
+
+    inspector = inspect(db.engine)
+    schema_updates = {
+        'kayitlar': [
+            ('senkronizasyon_sayisi', "ALTER TABLE kayitlar ADD COLUMN senkronizasyon_sayisi INTEGER NOT NULL DEFAULT 0"),
+        ],
+        'products': [
+            ('adet_tipi', "ALTER TABLE products ADD COLUMN adet_tipi VARCHAR(20) NOT NULL DEFAULT 'Karma'"),
+        ],
+        'excel_uploads': [
+            ('status', "ALTER TABLE excel_uploads ADD COLUMN status VARCHAR(30) NOT NULL DEFAULT 'KONTROL_EDILMEDI'"),
+            ('veri_aktarimi_yapildi', "ALTER TABLE excel_uploads ADD COLUMN veri_aktarimi_yapildi BOOLEAN NOT NULL DEFAULT 0"),
+            ('preview_data', "ALTER TABLE excel_uploads ADD COLUMN preview_data TEXT"),
+            ('hata_sebebi', "ALTER TABLE excel_uploads ADD COLUMN hata_sebebi TEXT"),
+        ],
+    }
+
+    for table_name, updates in schema_updates.items():
+        try:
+            existing_columns = {column['name'] for column in inspector.get_columns(table_name)}
+        except Exception:
+            continue
+        for column_name, statement in updates:
+            if column_name in existing_columns:
+                continue
+            db.session.execute(text(statement))
+    db.session.commit()
 
 
 def personel_ekle(ad):
@@ -327,7 +367,7 @@ def toplama_sil(id):
 
 
 def kayit_ekle(tarih, personel_id, toplama_id, trendyol_siparis=0,
-               trendyol_fatura=0, diger_pazar=0, not_alan=''):
+               trendyol_fatura=0, diger_pazar=0, not_alan='', senkronizasyon_sayisi=0):
     """Yeni kayıt ekle"""
 
     kayit = Kayit(
@@ -337,7 +377,8 @@ def kayit_ekle(tarih, personel_id, toplama_id, trendyol_siparis=0,
         trendyol_siparis=trendyol_siparis,
         trendyol_fatura=trendyol_fatura,
         diger_pazar=diger_pazar,
-        not_alan=not_alan
+        not_alan=not_alan,
+        senkronizasyon_sayisi=senkronizasyon_sayisi,
     )
 
     db.session.add(kayit)
@@ -365,6 +406,41 @@ def kayit_guncelle(id, tarih, personel_id, toplama_id, trendyol_siparis=0,
     db.session.commit()
 
     return {'basarili': True, 'mesaj': 'Kayıt başarıyla güncellendi!'}
+
+
+def kayit_senkronize_et(tarih, personel_id, toplama_id, trendyol_siparis=0,
+                        trendyol_fatura=0, diger_pazar=0, not_alan=''):
+    """Aynı gün/personel/toplama kaydını artırarak senkronize et."""
+
+    kayit = Kayit.query.filter_by(
+        tarih=tarih,
+        personel_id=personel_id,
+        toplama_id=toplama_id,
+    ).first()
+
+    if kayit:
+        kayit.trendyol_siparis += trendyol_siparis
+        kayit.trendyol_fatura += trendyol_fatura
+        kayit.diger_pazar += diger_pazar
+        if not_alan:
+            kayit.not_alan = f"{kayit.not_alan}\n{not_alan}".strip() if kayit.not_alan else not_alan
+        kayit.senkronizasyon_sayisi += 1
+        db.session.commit()
+        return {'basarili': True, 'mesaj': 'Kayıt senkronize edildi!', 'id': kayit.id, 'senkronize': True}
+
+    kayit = Kayit(
+        tarih=tarih,
+        personel_id=personel_id,
+        toplama_id=toplama_id,
+        trendyol_siparis=trendyol_siparis,
+        trendyol_fatura=trendyol_fatura,
+        diger_pazar=diger_pazar,
+        not_alan=not_alan,
+        senkronizasyon_sayisi=1,
+    )
+    db.session.add(kayit)
+    db.session.commit()
+    return {'basarili': True, 'mesaj': 'Yeni kayıt senkronize edildi!', 'id': kayit.id, 'senkronize': False}
 
 
 def kayit_sil(id):

@@ -9,6 +9,7 @@ from utils.excel_utils import build_template, load_excel_rows
 from utils.audit_utils import log_audit
 
 toplamalar_bp = Blueprint('toplamalar', __name__, url_prefix='/toplamalar')
+ADET_TIPLERI = {'1 Adet', '2+ Adet', 'Karma'}
 
 
 @toplamalar_bp.route('/')
@@ -74,6 +75,9 @@ def toplama_urun_ekle(toplama_id):
     ana_kod = str(data.get('ana_kod', '')).strip().upper()
     marka = str(data.get('marka', '')).strip()
     aciklama = str(data.get('aciklama', '')).strip()
+    adet_tipi = str(data.get('adet_tipi', 'Karma') or 'Karma').strip()
+    if adet_tipi not in ADET_TIPLERI:
+        adet_tipi = 'Karma'
 
     if not all([ana_kod, marka, aciklama]):
         return jsonify({'basarili': False, 'mesaj': 'Zorunlu alanlar eksik!'}), 400
@@ -87,6 +91,7 @@ def toplama_urun_ekle(toplama_id):
         aciklama=aciklama,
         toplama_id=toplama_id,
         beden_ayrimi=bool(data.get('beden_ayrimi', False)),
+        adet_tipi=adet_tipi,
         durum=True,
         guncelleyen_kullanici='system',
     )
@@ -116,6 +121,9 @@ def toplama_urun_guncelle(product_id):
         product.marka = str(data['marka'] or '').strip()
     if 'beden_ayrimi' in data:
         product.beden_ayrimi = bool(data['beden_ayrimi'])
+    if 'adet_tipi' in data:
+        adet_tipi = str(data['adet_tipi'] or 'Karma').strip()
+        product.adet_tipi = adet_tipi if adet_tipi in ADET_TIPLERI else 'Karma'
     if 'durum' in data:
         product.durum = bool(data['durum'])
 
@@ -139,7 +147,7 @@ def toplama_urun_sil(product_id):
 @toplamalar_bp.route('/api/<int:toplama_id>/template')
 def toplama_template(toplama_id):
     """Toplama ürün şablonunu indir"""
-    headers = ['Urun Kodu', 'Marka', 'Aciklama', 'Beden Ayrimi', 'Bedenler']
+    headers = ['Urun Kodu', 'Marka', 'Aciklama', 'Adet Tipi', 'Beden Ayrimi', 'Bedenler']
     stream = build_template(headers)
     return send_file(
         stream,
@@ -165,7 +173,7 @@ def toplama_excel_yukle(toplama_id):
     except Exception:
         return jsonify({'basarili': False, 'mesaj': 'Excel okunamadı. Dosya formatını kontrol edin.'}), 400
 
-    expected = ['Urun Kodu', 'Marka', 'Aciklama', 'Beden Ayrimi', 'Bedenler']
+    expected = ['Urun Kodu', 'Marka', 'Aciklama', 'Adet Tipi', 'Beden Ayrimi', 'Bedenler']
     if headers != expected:
         return jsonify({
             'basarili': False,
@@ -191,6 +199,9 @@ def toplama_excel_yukle(toplama_id):
                 continue
 
             beden_ayrimi = str(row.get('Beden Ayrimi', '0')).strip().lower() in ('1', 'true', 'evet')
+            adet_tipi = str(row.get('Adet Tipi', 'Karma') or 'Karma').strip()
+            if adet_tipi not in ADET_TIPLERI:
+                adet_tipi = 'Karma'
             bedenler_raw = str(row.get('Bedenler', '') or '').strip()
             bedenler = [b.strip() for b in bedenler_raw.split(',') if b.strip()] if bedenler_raw else []
 
@@ -200,6 +211,7 @@ def toplama_excel_yukle(toplama_id):
                 aciklama=aciklama,
                 toplama_id=toplama_id,
                 beden_ayrimi=beden_ayrimi,
+                adet_tipi=adet_tipi,
                 durum=True,
                 guncelleyen_kullanici='excel',
             )

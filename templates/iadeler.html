@@ -54,6 +54,9 @@
         <div class="alert alert-info small">
           <strong>Şablon sütunları:</strong> Siparis No | Tarih | Urun Kodu | Beden | Adet | Sebep
         </div>
+        <div class="alert alert-warning small">
+          ⚠ Kontrol edilmeden önce veriler sadece önizlemede kalır, veritabanına aktarılmaz.
+        </div>
         <div class="upload-zone" id="iadeUploadZone">
           <div class="upload-zone-icon">📂</div>
           <p class="fw-semibold mb-1">Excel dosyasını sürükleyin veya tıklayın</p>
@@ -160,6 +163,7 @@
 initUploadZone('iadeUploadZone', 'iadeExcelFile');
 
 let currentPage = 1;
+let pendingIadeUploadId = null;
 
 // ── Load Returns ──────────────────────────────────────
 async function loadIadeler(page = 1) {
@@ -207,13 +211,32 @@ async function iadeExcelYukle() {
   const res = document.getElementById('iadeExcelResult');
   if (data.basarili) {
     const o = data.ozet;
+    pendingIadeUploadId = data.upload_id;
     res.innerHTML = `
       <div class="alert alert-success">✓ ${data.mesaj}<br>
       Toplam: ${o.toplam_satir} | Başarılı: ${o.islenen_satir} | Hatalı: ${o.hatali_satir}
+      <div class="mt-3 d-flex gap-2 flex-wrap">
+        <button class="btn btn-success btn-sm" onclick="iadeKontrolEt(${data.upload_id})">✅ Kontrol Edildi</button>
+        <a class="btn btn-outline-secondary btn-sm" href="/iadeler/api/hata-raporu/${data.upload_id}">📥 Hata Raporu</a>
+        <span class="badge bg-warning text-dark align-self-center">❌ Kontrol Edilmedi</span>
+      </div>
       </div>`;
-    loadIadeler(1);
   } else {
     res.innerHTML = `<div class="alert alert-danger">✗ ${data.mesaj}</div>`;
+  }
+}
+
+async function iadeKontrolEt(uploadId) {
+  setLoading(true);
+  const { data } = await apiFetch(`/iadeler/api/kontrol-et/${uploadId}`, { method: 'POST' });
+  setLoading(false);
+  if (data.basarili) {
+    showAlert('success', '✓ ' + data.mesaj);
+    document.getElementById('iadeExcelResult').innerHTML += `<div class="alert alert-info mt-2">Durum: ✅ Kontrol Edildi</div>`;
+    loadIadeler(1);
+    loadGecmis();
+  } else {
+    showAlert('danger', '✗ ' + data.mesaj);
   }
 }
 
@@ -280,7 +303,7 @@ async function showAnalizler() {
       datasets: [{ label: 'İade Adeti', data: data.urun_iadeleri.map(u => u.adet),
         backgroundColor: 'rgba(99,102,241,0.75)' }]
     },
-    options: { responsive: true, plugins: { legend: { display: false } } }
+    options: { responsive: true, animation: false, plugins: { legend: { display: false } } }
   });
 
   // Neden Chart
@@ -291,7 +314,7 @@ async function showAnalizler() {
       datasets: [{ data: data.iade_nedenleri.map(n => n.adet),
         backgroundColor: ['#6366f1','#10b981','#f59e0b','#ef4444','#8b5cf6','#3b82f6'] }]
     },
-    options: { responsive: true }
+    options: { responsive: true, animation: false }
   });
 
   // Toplama Table
@@ -312,11 +335,16 @@ async function loadGecmis() {
     body.innerHTML = '<p class="text-muted text-center py-3">Geçmiş bulunamadı</p>';
   } else {
     body.innerHTML = `<table class="table table-sm">
-      <thead><tr><th>Dosya</th><th>Tarih</th><th>Toplam</th><th>Başarılı</th><th>Hatalı</th></tr></thead>
+      <thead><tr><th>Dosya</th><th>Tarih</th><th>Toplam</th><th>Başarılı</th><th>Hatalı</th><th>Durum</th><th>İşlem</th></tr></thead>
       <tbody>${data.gecmis.map(g => `<tr>
         <td>${g.dosya_adi}</td><td>${g.yukleme_tarihi}</td>
         <td>${g.toplam_satir}</td><td class="text-success">${g.basarili}</td>
         <td class="text-danger">${g.basarisiz}</td>
+        <td>${g.veri_aktarimi_yapildi ? '✅ Kontrol Edildi' : '❌ Kontrol Edilmedi'}</td>
+        <td class="d-flex gap-1 flex-wrap">
+          <a class="btn btn-outline-secondary btn-sm" href="/iadeler/api/hata-raporu/${g.id}">Rapor</a>
+          ${g.veri_aktarimi_yapildi ? '' : `<button class="btn btn-success btn-sm" onclick="iadeKontrolEt(${g.id})">Kontrol Et</button>`}
+        </td>
       </tr>`).join('')}</tbody>
     </table>`;
   }
@@ -327,4 +355,3 @@ async function loadGecmis() {
 loadIadeler(1);
 </script>
 {% endblock %}
-

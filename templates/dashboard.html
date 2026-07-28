@@ -5,7 +5,7 @@
 <!-- Page Header -->
 <div class="page-header mb-4">
   <h1 class="page-title">🏠 Dashboard</h1>
-  <span class="badge bg-success pulse">● Canlı</span>
+  <span class="badge bg-success">● Canlı</span>
 </div>
 
 <!-- Stat Cards Row -->
@@ -20,15 +20,6 @@
     </div>
   </div>
   <div class="col-6 col-md-2">
-    <div class="card stat-card success h-100">
-      <div class="card-body">
-        <div class="stat-label">Günlük Ürün</div>
-        <div class="stat-value mt-1" id="dailyItems">{{ metrics.daily_items }}</div>
-        <div class="stat-icon">📦</div>
-      </div>
-    </div>
-  </div>
-  <div class="col-6 col-md-2">
     <div class="card stat-card info h-100">
       <div class="card-body">
         <div class="stat-label">Aktif Personel</div>
@@ -37,25 +28,7 @@
       </div>
     </div>
   </div>
-  <div class="col-6 col-md-2">
-    <div class="card stat-card warning h-100">
-      <div class="card-body">
-        <div class="stat-label">Tanımsız Ürün</div>
-        <div class="stat-value mt-1" id="undefinedProducts">{{ metrics.undefined_products }}</div>
-        <div class="stat-icon">⚠️</div>
-      </div>
-    </div>
-  </div>
-  <div class="col-6 col-md-2">
-    <div class="card stat-card warning h-100">
-      <div class="card-body">
-        <div class="stat-label">Tanımsız Beden</div>
-        <div class="stat-value mt-1" id="undefinedSizes">{{ metrics.undefined_sizes }}</div>
-        <div class="stat-icon">📏</div>
-      </div>
-    </div>
-  </div>
-  <div class="col-6 col-md-2">
+  <div class="col-6 col-md-4">
     <div class="card stat-card error h-100">
       <div class="card-body">
         <div class="stat-label">İade Oranı</div>
@@ -82,12 +55,8 @@
     <div class="card h-100">
       <div class="card-header">🎯 Hızlı Erişim</div>
       <div class="card-body d-flex flex-column gap-2">
-        <a href="/kayitlar/" class="btn btn-outline-primary text-start">📋 Kayıtlar</a>
-        <a href="/kayitlar/api/template" class="btn btn-outline-success text-start">📥 Kayıt Şablonu İndir</a>
-        <a href="/siparisler/" class="btn btn-outline-primary text-start">🛒 Siparişler</a>
-        <a href="/siparisler/api/template" class="btn btn-outline-success text-start">📥 Sipariş Şablonu İndir</a>
-        <a href="/iadeler/" class="btn btn-outline-primary text-start">↩️ İadeler</a>
-        <a href="/raporlar/" class="btn btn-outline-primary text-start">📈 Raporlar</a>
+        <a href="/kayitlar/" class="btn btn-outline-primary text-start">➕ Ekle</a>
+        <a href="/iadeler/" class="btn btn-outline-danger text-start">➖ Çıkar</a>
       </div>
     </div>
   </div>
@@ -95,9 +64,49 @@
 
 <!-- Bottom Row -->
 <div class="row g-3">
-  <div class="col-md-6">
+  <div class="col-md-7">
+    <div class="card h-100">
+      <div class="card-header">👥 11 Personel İşleme Durumu</div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table mb-0">
+            <thead>
+              <tr>
+                <th>Personel Adı</th>
+                <th>İşlenen Toplama</th>
+                <th>İşlenmeyen Toplama</th>
+                <th>Toplam</th>
+                <th>Progress</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in personel_durum %}
+              <tr>
+                <td><strong>{{ row.personel }}</strong></td>
+                <td>{{ row.islenen }}</td>
+                <td>{{ row.islenmeyen }}</td>
+                <td>{{ row.toplam }}</td>
+                <td style="min-width:220px">
+                  <div class="d-flex align-items-center gap-2">
+                    <div class="progress flex-grow-1">
+                      <div class="progress-bar" role="progressbar" style="width: {{ row.yuzde }}%"></div>
+                    </div>
+                    <small class="text-muted">%{{ row.yuzde }}</small>
+                  </div>
+                </td>
+              </tr>
+              {% else %}
+              <tr><td colspan="5" class="text-center py-4 text-muted">Personel kaydı yok</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-5">
     <div class="card">
-      <div class="card-header">📅 Günlük Bölüm</div>
+      <div class="card-header">📅 Takip Bölümü</div>
       <div class="card-body">
         <div class="row g-2">
           <div class="col-6">
@@ -115,10 +124,8 @@
         </div>
       </div>
     </div>
-  </div>
-  <div class="col-md-6">
-    <div class="card">
-      <div class="card-header">📊 Aylık Bölüm</div>
+    <div class="card mt-3">
+      <div class="card-header">📊 Günlük Bölüm</div>
       <div class="card-body">
         <div class="row g-2">
           <div class="col-6">
@@ -147,33 +154,22 @@ const values = {{ last_7_days | map(attribute='orders') | list | tojson }};
 
 const ctx = document.getElementById('ordersChart').getContext('2d');
 new Chart(ctx, {
-  type: 'line',
+  type: 'bar',
   data: {
     labels: labels,
     datasets: [{
       label: 'Sipariş Sayısı',
       data: values,
       borderColor: '#6366f1',
-      backgroundColor: 'rgba(99,102,241,0.1)',
-      borderWidth: 3,
-      fill: true,
-      tension: 0.4,
-      pointBackgroundColor: '#6366f1',
-      pointRadius: 5,
-      pointHoverRadius: 8,
+      backgroundColor: 'rgba(99,102,241,0.55)',
+      borderWidth: 1,
     }]
   },
   options: {
     responsive: true,
+    animation: false,
     plugins: {
       legend: { display: false },
-      tooltip: {
-        backgroundColor: 'rgba(99,102,241,0.9)',
-        titleColor: '#fff',
-        bodyColor: '#fff',
-        padding: 12,
-        cornerRadius: 10,
-      }
     },
     scales: {
       y: {
@@ -195,11 +191,9 @@ setInterval(async () => {
     const res = await fetch('/api/dashboard-metrics');
     const data = await res.json();
     document.getElementById('dailyOrders').textContent = data.daily_orders;
-    document.getElementById('dailyItems').textContent = data.daily_items;
     document.getElementById('activePersonnel').textContent = data.active_personnel;
     document.getElementById('returnRate').textContent = `%${data.return_rate}`;
   } catch {}
 }, 30000);
 </script>
 {% endblock %}
-

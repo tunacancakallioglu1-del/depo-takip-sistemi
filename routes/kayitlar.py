@@ -5,7 +5,7 @@ Kayıtlar Rotaları
 
 from io import BytesIO
 from flask import Blueprint, render_template, request, jsonify, send_file
-from database import db, Kayit, Personel, Toplama, kayit_ekle, kayit_guncelle, kayit_sil
+from database import db, Kayit, Personel, Toplama, kayit_ekle, kayit_guncelle, kayit_senkronize_et, kayit_sil
 from utils.excel_utils import build_template, load_excel_rows, calculate_file_hash
 from utils.audit_utils import log_audit
 
@@ -150,6 +150,7 @@ def excel_yukle():
 
     basarili = 0
     hatalar = []
+    senkronize_satirlar = 0
 
     for idx, row in enumerate(rows, start=2):
         try:
@@ -178,8 +179,7 @@ def excel_yukle():
             else:
                 tarih_formatted = tarih_raw
 
-            from database import kayit_ekle as _kayit_ekle
-            _kayit_ekle(
+            sonuc = kayit_senkronize_et(
                 tarih=tarih_formatted,
                 personel_id=personel.id,
                 toplama_id=toplama.id,
@@ -189,6 +189,8 @@ def excel_yukle():
                 not_alan=str(row.get('Not', '') or ''),
             )
             basarili += 1
+            if sonuc.get('senkronize'):
+                senkronize_satirlar += 1
         except Exception:
             hatalar.append({'satir': idx, 'hata': 'Satır işlenemedi'})
 
@@ -196,11 +198,12 @@ def excel_yukle():
 
     return jsonify({
         'basarili': True,
-        'mesaj': f'{basarili} kayıt eklendi, {len(hatalar)} satır atlandı.',
+        'mesaj': f'{basarili} satır işlendi, {senkronize_satirlar} satır mevcut kayda eklendi.',
         'ozet': {
             'toplam_satir': len(rows),
             'basarili': basarili,
             'hatali': len(hatalar),
+            'senkronize': senkronize_satirlar,
         },
         'hatalar': hatalar,
     })

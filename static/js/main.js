@@ -128,6 +128,9 @@ function formatNumber(n) {
 
 // ── Init ───────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+  if (window.Chart) {
+    Chart.defaults.animation = false;
+  }
   // Add active class to current nav link
   const path = window.location.pathname;
   document.querySelectorAll('.navbar .nav-link').forEach(link => {
@@ -140,4 +143,3 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 console.log('✓ Depo Operasyon — Main.js yüklendi');
-

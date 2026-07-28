@@ -1,12 +1,12 @@
 {% extends "base.html" %}
-{% block title %}Kayıtlar{% endblock %}
+{% block title %}Takip Kayıtları{% endblock %}
 {% block content %}
 
 <div class="page-header">
-  <h1 class="page-title">📋 Günlük Kayıtlar</h1>
+  <h1 class="page-title">📋 Takip Kayıtları</h1>
   <div class="d-flex gap-2 flex-wrap">
     <a href="/kayitlar/api/template" class="btn btn-success btn-sm">📥 Şablon İndir</a>
-    <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#excelModal">📤 Excel Yükle</button>
+    <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#excelModal">🔄 Senkronize Et</button>
     <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#ekleModal">➕ Manuel Ekle</button>
   </div>
 </div>
@@ -58,6 +58,7 @@
             <th>Trendyol Fatura</th>
             <th>Diğer Pazar</th>
             <th>Toplam</th>
+            <th>Senkron</th>
             <th>Not</th>
             <th>İşlemler</th>
           </tr>
@@ -72,6 +73,7 @@
             <td>{{ kayit.trendyol_fatura }}</td>
             <td>{{ kayit.diger_pazar }}</td>
             <td><strong>{{ (kayit.trendyol_siparis + kayit.trendyol_fatura + kayit.diger_pazar) | int }}</strong></td>
+            <td><span class="badge bg-info">{{ kayit.senkronizasyon_sayisi }}</span></td>
             <td>{{ kayit.not_alan or '' }}</td>
             <td>
               <button class="btn btn-sm btn-warning editBtn"
@@ -87,7 +89,7 @@
             </td>
           </tr>
           {% else %}
-          <tr><td colspan="9" class="text-center py-4 text-muted">Henüz kayıt yok</td></tr>
+          <tr><td colspan="10" class="text-center py-4 text-muted">Henüz kayıt yok</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -214,7 +216,8 @@
       </div>
       <div class="modal-body">
         <div class="alert alert-info">
-          <strong>Şablon formatı:</strong> Tarih | Personel | Toplama | Trendyol Siparis | Trendyol Fatura | Diger Pazar | Not
+          <strong>Şablon formatı:</strong> Tarih | Personel | Toplama | Trendyol Siparis | Trendyol Fatura | Diger Pazar | Not<br>
+          Aynı gün aynı personel ve toplama tekrar gelirse mevcut kaydın üzerine eklenir.
         </div>
         <div class="upload-zone" id="uploadZone" onclick="document.getElementById('excelFile').click()">
           <div class="upload-zone-icon">📂</div>
@@ -226,7 +229,7 @@
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Kapat</button>
-        <button type="button" class="btn btn-primary" onclick="excelYukle()">🚀 Yükle</button>
+        <button type="button" class="btn btn-primary" onclick="excelYukle()">🔄 Senkronize Et</button>
       </div>
     </div>
   </div>
@@ -346,7 +349,7 @@ async function excelYukle() {
     res.innerHTML = `
       <div class="alert alert-success">
         <strong>✓ ${data.mesaj}</strong><br>
-        Toplam: ${o.toplam_satir} | Başarılı: ${o.basarili} | Hatalı: ${o.hatali}
+        Toplam: ${o.toplam_satir} | İşlenen: ${o.basarili} | Senkronize: ${o.senkronize || 0} | Hatalı: ${o.hatali}
       </div>
       ${data.hatalar && data.hatalar.length ? `
         <div class="alert alert-warning">
@@ -362,4 +365,3 @@ async function excelYukle() {
 }
 </script>
 {% endblock %}
-
