@@ -11,6 +11,7 @@ from database import (
     Kayit,
     Order,
     Product,
+    Size,
     Return,
     kayit_ekle,
 )
@@ -26,8 +27,6 @@ def index():
 
     daily_orders = db.session.query(func.count(func.distinct(Order.siparis_no))).filter(Order.tarih >= today_start).scalar() or 0
     daily_items = db.session.query(func.coalesce(func.sum(Order.adet), 0)).filter(Order.tarih >= today_start).scalar() or 0
-    undefined_products = 0
-    undefined_sizes = 0
 
     active_personnel = db.session.query(func.count(func.distinct(Order.personel_id))).filter(
         Order.tarih >= today_start,
@@ -49,12 +48,25 @@ def index():
         'daily_orders': daily_orders,
         'daily_items': int(daily_items),
         'active_personnel': active_personnel,
-        'undefined_products': undefined_products,
-        'undefined_sizes': undefined_sizes,
         'return_rate': _calculate_return_rate(),
     }
 
-    return render_template('dashboard.html', metrics=metrics, last_7_days=last_7_days)
+    # Hızlı erişim için veriler
+    toplamalar = Toplama.query.order_by(Toplama.id).all()
+    personeller = Personel.query.order_by(Personel.ad).all()
+    urunler = Product.query.filter_by(durum=True).order_by(Product.ana_kod).all()
+    bedenler = db.session.query(Size.beden).distinct().order_by(Size.beden).all()
+    bedenler = [b[0] for b in bedenler]
+
+    return render_template(
+        'dashboard.html',
+        metrics=metrics,
+        last_7_days=last_7_days,
+        toplamalar=toplamalar,
+        personeller=personeller,
+        urunler=urunler,
+        bedenler=bedenler,
+    )
 
 
 def _calculate_return_rate():
@@ -76,8 +88,6 @@ def dashboard_metrics():
             Order.tarih >= today_start,
             Order.personel_id.isnot(None)
         ).scalar() or 0,
-        'undefined_products': 0,
-        'undefined_sizes': 0,
         'return_rate': _calculate_return_rate(),
     })
 
