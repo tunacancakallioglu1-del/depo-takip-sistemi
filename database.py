@@ -5,6 +5,7 @@ Veritabanı Modelleri ve İşlemleri
 
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
+from sqlalchemy import text
 
 
 db = SQLAlchemy()
@@ -71,6 +72,8 @@ class Kayit(db.Model):
     diger_pazar = db.Column(db.Float, default=0)
     not_alan = db.Column(db.Text, default='')
     eklenme_tarihi = db.Column(db.DateTime, default=datetime.now)
+    senkronizasyon_sayisi = db.Column(db.Integer, default=0, nullable=False)
+    son_senkronizasyon = db.Column(db.DateTime, nullable=True)
 
     def __repr__(self):
         return f'<Kayit {self.tarih}>'
@@ -194,6 +197,9 @@ class Order(db.Model):
     termin_tarihi = db.Column(db.Date, nullable=True)
     durum = db.Column(db.String(50), default='Yeni', nullable=False)
     excel_yukleme_id = db.Column(db.Integer, db.ForeignKey('excel_uploads.id'), nullable=True)
+    senkronize_edildi = db.Column(db.Boolean, default=False, nullable=False)
+    senkronize_tarihi = db.Column(db.DateTime, nullable=True)
+    referans_kayit_id = db.Column(db.Integer, nullable=True)
 
     urun = db.relationship('Product', backref=db.backref('orders', lazy=True))
     toplama = db.relationship('Toplama', backref=db.backref('orders', lazy=True))
@@ -238,6 +244,8 @@ class ExcelUpload(db.Model):
     toplam_satir = db.Column(db.Integer, default=0, nullable=False)
     basarili = db.Column(db.Integer, default=0, nullable=False)
     basarisiz = db.Column(db.Integer, default=0, nullable=False)
+    durum = db.Column(db.String(50), default='YUKLENDI', nullable=False)
+    kontrol_tarihi = db.Column(db.DateTime, nullable=True)
 
     orders = db.relationship('Order', backref='excel_upload', lazy=True)
     returns = db.relationship('Return', backref='excel_upload', lazy=True)
@@ -272,6 +280,44 @@ def ilk_toplamalar_olustur():
 
         db.session.commit()
         print("✓ Otomatik Toplamalar (1-11) oluşturuldu")
+
+
+def veritabani_migrasyonu():
+    """Mevcut veritabanına yeni sütunlar ekle (var olanları atla)"""
+    from sqlalchemy import inspect as sa_inspect
+
+    inspector = sa_inspect(db.engine)
+    existing_tables = inspector.get_table_names()
+
+    with db.engine.connect() as conn:
+        # orders tablosuna yeni sütunlar ekle
+        if 'orders' in existing_tables:
+            orders_cols = [c['name'] for c in inspector.get_columns('orders')]
+            if 'senkronize_edildi' not in orders_cols:
+                conn.execute(text('ALTER TABLE orders ADD COLUMN senkronize_edildi BOOLEAN DEFAULT 0 NOT NULL'))
+            if 'senkronize_tarihi' not in orders_cols:
+                conn.execute(text('ALTER TABLE orders ADD COLUMN senkronize_tarihi DATETIME'))
+            if 'referans_kayit_id' not in orders_cols:
+                conn.execute(text('ALTER TABLE orders ADD COLUMN referans_kayit_id INTEGER'))
+
+        # kayitlar tablosuna yeni sütunlar ekle
+        if 'kayitlar' in existing_tables:
+            kayit_cols = [c['name'] for c in inspector.get_columns('kayitlar')]
+            if 'senkronizasyon_sayisi' not in kayit_cols:
+                conn.execute(text('ALTER TABLE kayitlar ADD COLUMN senkronizasyon_sayisi INTEGER DEFAULT 0 NOT NULL'))
+            if 'son_senkronizasyon' not in kayit_cols:
+                conn.execute(text('ALTER TABLE kayitlar ADD COLUMN son_senkronizasyon DATETIME'))
+
+        # excel_uploads tablosuna yeni sütunlar ekle
+        if 'excel_uploads' in existing_tables:
+            excel_cols = [c['name'] for c in inspector.get_columns('excel_uploads')]
+            if 'durum' not in excel_cols:
+                conn.execute(text("ALTER TABLE excel_uploads ADD COLUMN durum VARCHAR(50) DEFAULT 'YUKLENDI' NOT NULL"))
+            if 'kontrol_tarihi' not in excel_cols:
+                conn.execute(text('ALTER TABLE excel_uploads ADD COLUMN kontrol_tarihi DATETIME'))
+
+        conn.commit()
+    print("✓ Veritabanı migrasyonu tamamlandı")
 
 
 def personel_ekle(ad):

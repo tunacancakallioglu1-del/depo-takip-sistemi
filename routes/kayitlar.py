@@ -3,9 +3,10 @@
 Kayıtlar Rotaları
 """
 
+from datetime import datetime
 from io import BytesIO
 from flask import Blueprint, render_template, request, jsonify, send_file
-from database import db, Kayit, Personel, Toplama, kayit_ekle, kayit_guncelle, kayit_sil
+from database import db, Kayit, Personel, Toplama, Order, kayit_ekle, kayit_guncelle, kayit_sil
 from utils.excel_utils import build_template, load_excel_rows, calculate_file_hash
 from utils.audit_utils import log_audit
 
@@ -204,3 +205,159 @@ def excel_yukle():
         },
         'hatalar': hatalar,
     })
+
+
+@kayitlar_bp.route('/api/senkronize', methods=['POST'])
+def senkronize_et():
+    """Siparişlerden kayıtlara senkronize et.
+
+    Bugünün (veya gönderilen tarihin) senkronize edilmemiş siparişlerini
+    personel+toplama bazında gruplar ve kayıtlara Trendyol Sipariş olarak ekler.
+    Aynı gün aynı personel+toplama kaydı varsa üzerine ekleme yapar.
+    """
+    try:
+        veri = request.get_json() or {}
+        tarih_str = veri.get('tarih')
+        upload_id = veri.get('upload_id')
+
+        if tarih_str:
+            tarih_obj = datetime.strptime(tarih_str, '%Y-%m-%d').date()
+        else:
+            tarih_obj = datetime.utcnow().date()
+
+        tarih_db = tarih_obj.strftime('%d.%m.%Y')
+
+        # Senkronize edilmemiş siparişleri filtrele
+        query = Order.query.filter_by(senkronize_edildi=False)
+        if upload_id:
+            query = query.filter_by(excel_yukleme_id=int(upload_id))
+
+        siparisler = query.all()
+
+        if not siparisler:
+            return jsonify({'basarili': True, 'mesaj': 'Senkronize edilecek sipariş bulunamadı.', 'yeni': 0, 'guncellendi': 0})
+
+        # Personel+Toplama bazında sayıları topla
+        gruplar = {}
+        for s in siparisler:
+            if not s.personel_id:
+                continue
+            key = (s.personel_id, s.toplama_id)
+            gruplar[key] = gruplar.get(key, 0) + 1
+
+        yeni = 0
+        guncellendi = 0
+
+        for (personel_id, toplama_id), siparis_sayisi in gruplar.items():
+            kayit = Kayit.query.filter_by(
+                tarih=tarih_db,
+                personel_id=personel_id,
+                toplama_id=toplama_id,
+            ).first()
+
+            if kayit:
+                kayit.trendyol_siparis = (kayit.trendyol_siparis or 0) + siparis_sayisi
+                kayit.senkronizasyon_sayisi = (kayit.senkronizasyon_sayisi or 0) + 1
+                kayit.son_senkronizasyon = datetime.now()
+                guncellendi += 1
+            else:
+                kayit = Kayit(
+                    tarih=tarih_db,
+                    personel_id=personel_id,
+                    toplama_id=toplama_id,
+                    trendyol_siparis=siparis_sayisi,
+                    trendyol_fatura=0,
+                    diger_pazar=0,
+                    not_alan='',
+                    senkronizasyon_sayisi=1,
+                    son_senkronizasyon=datetime.now(),
+                )
+                db.session.add(kayit)
+                db.session.flush()
+                yeni += 1
+
+        # Siparişleri senkronize edildi olarak işaretle
+        now = datetime.now()
+        for s in siparisler:
+            if s.personel_id:
+                s.senkronize_edildi = True
+                s.senkronize_tarihi = now
+
+        db.session.commit()
+        log_audit('senkronizasyon', 'kayitlar', None, yeni_deger={'yeni': yeni, 'guncellendi': guncellendi})
+
+        return jsonify({
+            'basarili': True,
+            'mesaj': f'Senkronizasyon tamamlandı: {yeni} yeni kayıt, {guncellendi} kayıt güncellendi.',
+            'yeni': yeni,
+            'guncellendi': guncellendi,
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'basarili': False, 'mesaj': f'Hata: {str(e)}'}), 500
+
+
+def _senkronize_upload(upload_id):
+    """Belirli bir upload_id için senkronizasyon yap (route dışından çağrılabilir)"""
+    tarih_db = datetime.utcnow().strftime('%d.%m.%Y')
+
+    siparisler = Order.query.filter_by(
+        excel_yukleme_id=upload_id,
+        senkronize_edildi=False,
+    ).all()
+
+    if not siparisler:
+        return {'basarili': True, 'mesaj': 'Senkronize edilecek sipariş bulunamadı.', 'yeni': 0, 'guncellendi': 0}
+
+    gruplar = {}
+    for s in siparisler:
+        if not s.personel_id:
+            continue
+        key = (s.personel_id, s.toplama_id)
+        gruplar[key] = gruplar.get(key, 0) + 1
+
+    yeni = 0
+    guncellendi = 0
+
+    for (personel_id, toplama_id), siparis_sayisi in gruplar.items():
+        kayit = Kayit.query.filter_by(
+            tarih=tarih_db,
+            personel_id=personel_id,
+            toplama_id=toplama_id,
+        ).first()
+
+        if kayit:
+            kayit.trendyol_siparis = (kayit.trendyol_siparis or 0) + siparis_sayisi
+            kayit.senkronizasyon_sayisi = (kayit.senkronizasyon_sayisi or 0) + 1
+            kayit.son_senkronizasyon = datetime.now()
+            guncellendi += 1
+        else:
+            kayit = Kayit(
+                tarih=tarih_db,
+                personel_id=personel_id,
+                toplama_id=toplama_id,
+                trendyol_siparis=siparis_sayisi,
+                trendyol_fatura=0,
+                diger_pazar=0,
+                not_alan='',
+                senkronizasyon_sayisi=1,
+                son_senkronizasyon=datetime.now(),
+            )
+            db.session.add(kayit)
+            db.session.flush()
+            yeni += 1
+
+    now = datetime.now()
+    for s in siparisler:
+        if s.personel_id:
+            s.senkronize_edildi = True
+            s.senkronize_tarihi = now
+
+    db.session.commit()
+    return {
+        'basarili': True,
+        'mesaj': f'{yeni} yeni kayıt oluşturuldu, {guncellendi} kayıt güncellendi.',
+        'yeni': yeni,
+        'guncellendi': guncellendi,
+    }

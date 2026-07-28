@@ -168,10 +168,49 @@ def api_gecmis():
                 'toplam_satir': u.toplam_satir,
                 'basarili': u.basarili,
                 'basarisiz': u.basarisiz,
+                'durum': u.durum,
+                'kontrol_tarihi': u.kontrol_tarihi.strftime('%Y-%m-%d %H:%M') if u.kontrol_tarihi else None,
             }
             for u in uploads
         ],
     })
+
+
+@siparisler_bp.route('/api/kontrol-edildi/<int:upload_id>', methods=['POST'])
+def kontrol_edildi(upload_id):
+    """Yüklemeyi kontrol edildi olarak işaretle ve senkronizasyonu tetikle"""
+    from database import ExcelUpload, Kayit, Order
+    from datetime import datetime
+
+    upload = ExcelUpload.query.get_or_404(upload_id)
+
+    if upload.durum == 'KONTROL_EDILDI':
+        return jsonify({'basarili': False, 'mesaj': 'Bu yükleme zaten kontrol edildi!'})
+
+    if upload.modul != 'siparis':
+        return jsonify({'basarili': False, 'mesaj': 'Geçersiz modül!'})
+
+    try:
+        # Kontrol edildi olarak işaretle
+        upload.durum = 'KONTROL_EDILDI'
+        upload.kontrol_tarihi = datetime.now()
+        db.session.commit()
+
+        # Senkronizasyonu başlat
+        from routes.kayitlar import _senkronize_upload
+        sonuc = _senkronize_upload(upload_id)
+
+        log_audit('kontrol_edildi', 'excel_uploads', upload_id, yeni_deger={'durum': 'KONTROL_EDILDI', 'senkronizasyon': sonuc})
+
+        return jsonify({
+            'basarili': True,
+            'mesaj': f'Kontrol edildi. {sonuc["mesaj"]}',
+            'senkronizasyon': sonuc,
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'basarili': False, 'mesaj': f'Hata: {str(e)}'}), 500
 
 
 @siparisler_bp.route('/api/list')
