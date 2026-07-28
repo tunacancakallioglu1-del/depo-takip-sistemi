@@ -67,8 +67,8 @@ def excel_yukle():
             )
             db.session.add(ret)
             basarili += 1
-        except Exception as exc:
-            row_errors.append({'satir': row_no, 'hata': str(exc)})
+        except Exception:
+            row_errors.append({'satir': row_no, 'hata': 'Satır işlenemedi'})
 
     upload.basarili = basarili
     upload.basarisiz = len(row_errors)

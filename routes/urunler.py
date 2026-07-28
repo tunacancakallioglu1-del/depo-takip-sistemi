@@ -149,8 +149,8 @@ def excel_yukle():
             )
             db.session.add(product)
             basarili += 1
-        except Exception as exc:
-            hatalar.append({'satir': idx, 'hata': str(exc)})
+        except Exception:
+            hatalar.append({'satir': idx, 'hata': 'Satır işlenemedi'})
 
     upload.basarili = basarili
     upload.basarisiz = len(hatalar)

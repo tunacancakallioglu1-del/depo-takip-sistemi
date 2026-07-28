@@ -88,8 +88,8 @@ def excel_yukle():
             db.session.add(order)
             basarili += 1
             unique_orders.add(siparis_no)
-        except Exception as exc:
-            row_errors.append({'satir': row_no, 'hata': str(exc)})
+        except Exception:
+            row_errors.append({'satir': row_no, 'hata': 'Satır işlenemedi'})
 
     upload.basarili = basarili
     upload.basarisiz = len(row_errors)
