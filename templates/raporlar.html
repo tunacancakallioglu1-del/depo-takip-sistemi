@@ -1,19 +1,292 @@
 {% extends 'base.html' %}
 {% block title %}Raporlar{% endblock %}
 {% block content %}
-<h3>Raporlama Sistemi</h3>
-<div class="row g-3">
-    <div class="col-md-6">
-        <div class="card"><div class="card-body">
-            <h5>API Raporları</h5>
-            <ul>
-                <li><code>/raporlar/api/personel</code></li>
-                <li><code>/raporlar/api/toplama</code></li>
-                <li><code>/raporlar/api/urun</code></li>
-                <li><code>/raporlar/api/iade-analiz</code></li>
-            </ul>
-            <p>Excel Export: <code>/raporlar/api/export?tip=personel|toplama|urun|iade</code></p>
-        </div></div>
+
+<div class="page-header">
+  <h1 class="page-title">📈 Raporlama Sistemi</h1>
+</div>
+
+<!-- Tabs -->
+<ul class="nav nav-tabs section-tabs mb-3" id="raporTab">
+  <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#personelTab" onclick="loadPersonelRapor()">👤 Personel</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#toplamTab" onclick="loadToplamRapor()">📦 Toplama</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#urunTab" onclick="loadUrunRapor()">🏷️ Ürün</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#iadeTab" onclick="loadIadeAnaliz()">↩️ İade Analiz</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#gunlukTab" onclick="loadGunlukRapor()">📅 Günlük</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#primTab" onclick="loadPrimRapor()">💰 Prim</button></li>
+</ul>
+
+<div class="tab-content">
+
+  <!-- Personel Raporu -->
+  <div class="tab-pane fade show active" id="personelTab">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>👤 Personel Raporu (Aylık)</span>
+        <a href="/raporlar/api/export?tip=personel" class="btn btn-success btn-sm">📥 Excel İndir</a>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table mb-0">
+            <thead>
+              <tr><th>Personel</th><th>Sipariş Sayısı</th><th>Ürün Sayısı</th></tr>
+            </thead>
+            <tbody id="personelBody">
+              <tr><td colspan="3" class="text-center py-3 text-muted">Yükleniyor...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
+    <div class="card mt-3">
+      <div class="card-header">📊 Personel Performans Grafiği</div>
+      <div class="card-body"><canvas id="personelChart" height="100"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Toplama Raporu -->
+  <div class="tab-pane fade" id="toplamTab">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>📦 Toplama Raporu</span>
+        <a href="/raporlar/api/export?tip=toplama" class="btn btn-success btn-sm">📥 Excel İndir</a>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table mb-0">
+            <thead>
+              <tr><th>Toplama</th><th>Sipariş Sayısı</th><th>Ürün Sayısı</th><th>Farklı Ürün</th></tr>
+            </thead>
+            <tbody id="toplamBody">
+              <tr><td colspan="4" class="text-center py-3 text-muted">Yükleniyor...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Ürün Raporu -->
+  <div class="tab-pane fade" id="urunTab">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>🏷️ Ürün Raporu</span>
+        <a href="/raporlar/api/export?tip=urun" class="btn btn-success btn-sm">📥 Excel İndir</a>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table mb-0">
+            <thead>
+              <tr><th>Ürün Kodu</th><th>Marka</th><th>Sipariş Sayısı</th><th>Toplam Adet</th></tr>
+            </thead>
+            <tbody id="urunBody">
+              <tr><td colspan="4" class="text-center py-3 text-muted">Yükleniyor...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- İade Analiz -->
+  <div class="tab-pane fade" id="iadeTab">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>↩️ İade Neden Analizi</span>
+        <a href="/raporlar/api/export?tip=iade" class="btn btn-success btn-sm">📥 Excel İndir</a>
+      </div>
+      <div class="card-body">
+        <div class="row">
+          <div class="col-md-6">
+            <canvas id="iadeChart" height="200"></canvas>
+          </div>
+          <div class="col-md-6">
+            <table class="table table-sm">
+              <thead><tr><th>İade Sebebi</th><th>Adet</th></tr></thead>
+              <tbody id="iadeBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Günlük Rapor -->
+  <div class="tab-pane fade" id="gunlukTab">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>📅 Günlük Kayıt Raporu (Personel)</span>
+        <a href="/raporlar/api/export?tip=gunluk_personel" class="btn btn-success btn-sm">📥 Excel İndir</a>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table mb-0">
+            <thead>
+              <tr><th>Personel</th><th>Tarih</th><th>Toplama</th><th>Trendyol Sipariş</th><th>Trendyol Fatura</th><th>Diğer Pazar</th><th>Toplam</th></tr>
+            </thead>
+            <tbody id="gunlukBody">
+              <tr><td colspan="7" class="text-center py-3 text-muted">Yükleniyor...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Prim Raporu -->
+  <div class="tab-pane fade" id="primTab">
+    <div class="card mb-3">
+      <div class="card-header">💰 Prim Hesaplama Parametreleri</div>
+      <div class="card-body">
+        <div class="row g-3 align-items-end">
+          <div class="col-md-4">
+            <label class="form-label">Sipariş Başına Prim (₺)</label>
+            <input type="number" class="form-control" id="primSiparis" value="0" min="0" step="0.01">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Ürün Başına Prim (₺)</label>
+            <input type="number" class="form-control" id="primUrun" value="0" min="0" step="0.01">
+          </div>
+          <div class="col-md-4">
+            <button class="btn btn-primary w-100" onclick="loadPrimRapor()">🔢 Hesapla</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>💰 Prim Raporu</span>
+        <a id="primExportLink" href="/raporlar/api/export?tip=prim" class="btn btn-success btn-sm">📥 Excel İndir</a>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table mb-0">
+            <thead>
+              <tr><th>Personel</th><th>Sipariş</th><th>Ürün</th><th>İade</th><th>Prim (₺)</th></tr>
+            </thead>
+            <tbody id="primBody">
+              <tr><td colspan="5" class="text-center py-3 text-muted">Hesaplayın...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
 </div>
 {% endblock %}
+{% block extra_js %}
+<script>
+let personelChartInstance = null;
+let iadeChartInstance = null;
+
+async function loadPersonelRapor() {
+  const { data } = await apiFetch('/raporlar/api/personel');
+  if (!data.basarili) return;
+
+  document.getElementById('personelBody').innerHTML = data.veri.map(row => `
+    <tr>
+      <td><strong>${row.personel}</strong></td>
+      <td>${formatNumber(row.siparis_sayisi)}</td>
+      <td>${formatNumber(row.urun_sayisi)}</td>
+    </tr>`).join('') || '<tr><td colspan="3" class="text-center text-muted">Veri yok</td></tr>';
+
+  if (personelChartInstance) personelChartInstance.destroy();
+  personelChartInstance = new Chart(document.getElementById('personelChart'), {
+    type: 'bar',
+    data: {
+      labels: data.veri.map(r => r.personel),
+      datasets: [
+        { label: 'Sipariş', data: data.veri.map(r => r.siparis_sayisi), backgroundColor: 'rgba(99,102,241,0.75)' },
+        { label: 'Ürün', data: data.veri.map(r => r.urun_sayisi), backgroundColor: 'rgba(16,185,129,0.75)' },
+      ]
+    },
+    options: { responsive: true, plugins: { legend: { position: 'top' } } }
+  });
+}
+
+async function loadToplamRapor() {
+  const { data } = await apiFetch('/raporlar/api/toplama');
+  if (!data.basarili) return;
+  document.getElementById('toplamBody').innerHTML = data.veri.map(row => `
+    <tr>
+      <td><strong>${row.toplama}</strong></td>
+      <td>${formatNumber(row.siparis_sayisi)}</td>
+      <td>${formatNumber(row.urun_sayisi)}</td>
+      <td>${formatNumber(row.farkli_urun_sayisi)}</td>
+    </tr>`).join('') || '<tr><td colspan="4" class="text-center text-muted">Veri yok</td></tr>';
+}
+
+async function loadUrunRapor() {
+  const { data } = await apiFetch('/raporlar/api/urun');
+  if (!data.basarili) return;
+  document.getElementById('urunBody').innerHTML = data.veri.map(row => `
+    <tr>
+      <td><span class="badge bg-primary-soft text-primary">${row.ana_kod}</span></td>
+      <td>${row.marka}</td>
+      <td>${formatNumber(row.siparis_sayisi)}</td>
+      <td>${formatNumber(row.adet)}</td>
+    </tr>`).join('') || '<tr><td colspan="4" class="text-center text-muted">Veri yok</td></tr>';
+}
+
+async function loadIadeAnaliz() {
+  const { data } = await apiFetch('/raporlar/api/iade-analiz');
+  if (!data.basarili) return;
+
+  document.getElementById('iadeBody').innerHTML = data.veri.map(row => `
+    <tr><td>${row.sebep}</td><td>${formatNumber(row.adet)}</td></tr>`).join('') || '<tr><td colspan="2" class="text-center text-muted">Veri yok</td></tr>';
+
+  if (iadeChartInstance) iadeChartInstance.destroy();
+  iadeChartInstance = new Chart(document.getElementById('iadeChart'), {
+    type: 'doughnut',
+    data: {
+      labels: data.veri.map(r => r.sebep),
+      datasets: [{ data: data.veri.map(r => r.adet),
+        backgroundColor: ['#6366f1','#10b981','#f59e0b','#ef4444','#8b5cf6','#3b82f6','#ec4899'] }]
+    },
+    options: { responsive: true }
+  });
+}
+
+async function loadGunlukRapor() {
+  const { data } = await apiFetch('/raporlar/api/gunluk-personel');
+  if (!data.basarili) return;
+  document.getElementById('gunlukBody').innerHTML = data.veri.map(row => `
+    <tr>
+      <td><strong>${row.personel}</strong></td>
+      <td>${row.tarih}</td>
+      <td>${row.toplama}</td>
+      <td>${row.trendyol_siparis}</td>
+      <td>${row.trendyol_fatura}</td>
+      <td>${row.diger_pazar}</td>
+      <td><strong>${row.toplam}</strong></td>
+    </tr>`).join('') || '<tr><td colspan="7" class="text-center text-muted">Veri yok</td></tr>';
+}
+
+async function loadPrimRapor() {
+  const ps = document.getElementById('primSiparis').value || 0;
+  const pu = document.getElementById('primUrun').value || 0;
+  const { data } = await apiFetch(`/raporlar/api/prim?prim_siparis=${ps}&prim_urun=${pu}`);
+  if (!data.basarili) return;
+
+  let toplam = 0;
+  document.getElementById('primBody').innerHTML = data.veri.map(row => {
+    toplam += row.prim;
+    return `<tr>
+      <td><strong>${row.personel}</strong></td>
+      <td>${formatNumber(row.siparis_sayisi)}</td>
+      <td>${formatNumber(row.urun_sayisi)}</td>
+      <td>${formatNumber(row.iade_sayisi)}</td>
+      <td><strong class="text-success">${row.prim.toFixed(2)} ₺</strong></td>
+    </tr>`;
+  }).join('') + `<tr class="table-active fw-bold">
+    <td colspan="4">TOPLAM</td>
+    <td class="text-success">${toplam.toFixed(2)} ₺</td>
+  </tr>`;
+}
+
+// Initial loads
+loadPersonelRapor();
+</script>
+{% endblock %}
+

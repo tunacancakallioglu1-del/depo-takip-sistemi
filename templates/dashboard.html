@@ -1,28 +1,205 @@
 {% extends 'base.html' %}
-{% block title %}Dashboard{% endblock %}
+{% block title %}Dashboard — Depo Operasyon{% endblock %}
 {% block content %}
+
+<!-- Page Header -->
+<div class="page-header mb-4">
+  <h1 class="page-title">🏠 Dashboard</h1>
+  <span class="badge bg-success pulse">● Canlı</span>
+</div>
+
+<!-- Stat Cards Row -->
 <div class="row g-3 mb-4">
-    <div class="col-md-2"><div class="card"><div class="card-body"><h6>Günlük Sipariş</h6><h3>{{ metrics.daily_orders }}</h3></div></div></div>
-    <div class="col-md-2"><div class="card"><div class="card-body"><h6>Günlük Ürün</h6><h3>{{ metrics.daily_items }}</h3></div></div></div>
-    <div class="col-md-2"><div class="card"><div class="card-body"><h6>Aktif Personel</h6><h3>{{ metrics.active_personnel }}</h3></div></div></div>
-    <div class="col-md-2"><div class="card"><div class="card-body"><h6>Tanımsız Ürün</h6><h3>{{ metrics.undefined_products }}</h3></div></div></div>
-    <div class="col-md-2"><div class="card"><div class="card-body"><h6>Tanımsız Beden</h6><h3>{{ metrics.undefined_sizes }}</h3></div></div></div>
-    <div class="col-md-2"><div class="card"><div class="card-body"><h6>İade Oranı</h6><h3>%{{ metrics.return_rate }}</h3></div></div></div>
-</div>
-<div class="card">
-    <div class="card-body">
-        <h5>Son 7 Gün Sipariş Grafiği</h5>
-        <canvas id="ordersChart" height="80"></canvas>
+  <div class="col-6 col-md-2">
+    <div class="card stat-card h-100">
+      <div class="card-body">
+        <div class="stat-label">Günlük Sipariş</div>
+        <div class="stat-value mt-1" id="dailyOrders">{{ metrics.daily_orders }}</div>
+        <div class="stat-icon">🛒</div>
+      </div>
     </div>
+  </div>
+  <div class="col-6 col-md-2">
+    <div class="card stat-card success h-100">
+      <div class="card-body">
+        <div class="stat-label">Günlük Ürün</div>
+        <div class="stat-value mt-1" id="dailyItems">{{ metrics.daily_items }}</div>
+        <div class="stat-icon">📦</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-2">
+    <div class="card stat-card info h-100">
+      <div class="card-body">
+        <div class="stat-label">Aktif Personel</div>
+        <div class="stat-value mt-1" id="activePersonnel">{{ metrics.active_personnel }}</div>
+        <div class="stat-icon">👥</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-2">
+    <div class="card stat-card warning h-100">
+      <div class="card-body">
+        <div class="stat-label">Tanımsız Ürün</div>
+        <div class="stat-value mt-1" id="undefinedProducts">{{ metrics.undefined_products }}</div>
+        <div class="stat-icon">⚠️</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-2">
+    <div class="card stat-card warning h-100">
+      <div class="card-body">
+        <div class="stat-label">Tanımsız Beden</div>
+        <div class="stat-value mt-1" id="undefinedSizes">{{ metrics.undefined_sizes }}</div>
+        <div class="stat-icon">📏</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-2">
+    <div class="card stat-card error h-100">
+      <div class="card-body">
+        <div class="stat-label">İade Oranı</div>
+        <div class="stat-value mt-1" id="returnRate">%{{ metrics.return_rate }}</div>
+        <div class="stat-icon">↩️</div>
+      </div>
+    </div>
+  </div>
 </div>
+
+<!-- Charts Row -->
+<div class="row g-3 mb-4">
+  <div class="col-md-8">
+    <div class="card h-100">
+      <div class="card-header">📈 Son 7 Gün Sipariş Trendi</div>
+      <div class="card-body">
+        <div class="chart-wrapper">
+          <canvas id="ordersChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-header">🎯 Hızlı Erişim</div>
+      <div class="card-body d-flex flex-column gap-2">
+        <a href="/kayitlar/" class="btn btn-outline-primary text-start">📋 Kayıtlar</a>
+        <a href="/kayitlar/api/template" class="btn btn-outline-success text-start">📥 Kayıt Şablonu İndir</a>
+        <a href="/siparisler/" class="btn btn-outline-primary text-start">🛒 Siparişler</a>
+        <a href="/siparisler/api/template" class="btn btn-outline-success text-start">📥 Sipariş Şablonu İndir</a>
+        <a href="/iadeler/" class="btn btn-outline-primary text-start">↩️ İadeler</a>
+        <a href="/raporlar/" class="btn btn-outline-primary text-start">📈 Raporlar</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Bottom Row -->
+<div class="row g-3">
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header">📅 Günlük Bölüm</div>
+      <div class="card-body">
+        <div class="row g-2">
+          <div class="col-6">
+            <a href="/kayitlar/" class="btn btn-primary w-100">📋 Kayıtlar</a>
+          </div>
+          <div class="col-6">
+            <a href="/toplamalar/" class="btn btn-primary w-100">📦 Toplamalar</a>
+          </div>
+          <div class="col-6">
+            <a href="/personeller/" class="btn btn-outline-primary w-100">👥 Personeller</a>
+          </div>
+          <div class="col-6">
+            <a href="/raporlar/" class="btn btn-outline-primary w-100">📈 Raporlar</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header">📊 Aylık Bölüm</div>
+      <div class="card-body">
+        <div class="row g-2">
+          <div class="col-6">
+            <a href="/siparisler/" class="btn btn-primary w-100">🛒 Siparişler</a>
+          </div>
+          <div class="col-6">
+            <a href="/iadeler/" class="btn btn-primary w-100">↩️ İadeler</a>
+          </div>
+          <div class="col-6">
+            <a href="/urunler/" class="btn btn-outline-primary w-100">📦 Ürünler</a>
+          </div>
+          <div class="col-6">
+            <a href="/audit-log/" class="btn btn-outline-secondary w-100">🔍 Audit Log</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 {% block extra_js %}
 <script>
 const labels = {{ last_7_days | map(attribute='date') | list | tojson }};
 const values = {{ last_7_days | map(attribute='orders') | list | tojson }};
-new Chart(document.getElementById('ordersChart'), {
-    type: 'line',
-    data: {labels: labels, datasets: [{label: 'Sipariş', data: values, borderColor: '#0d6efd', tension: 0.4}]}
+
+const ctx = document.getElementById('ordersChart').getContext('2d');
+new Chart(ctx, {
+  type: 'line',
+  data: {
+    labels: labels,
+    datasets: [{
+      label: 'Sipariş Sayısı',
+      data: values,
+      borderColor: '#6366f1',
+      backgroundColor: 'rgba(99,102,241,0.1)',
+      borderWidth: 3,
+      fill: true,
+      tension: 0.4,
+      pointBackgroundColor: '#6366f1',
+      pointRadius: 5,
+      pointHoverRadius: 8,
+    }]
+  },
+  options: {
+    responsive: true,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        backgroundColor: 'rgba(99,102,241,0.9)',
+        titleColor: '#fff',
+        bodyColor: '#fff',
+        padding: 12,
+        cornerRadius: 10,
+      }
+    },
+    scales: {
+      y: {
+        beginAtZero: true,
+        grid: { color: 'rgba(99,102,241,0.08)' },
+        ticks: { color: '#6b7280' }
+      },
+      x: {
+        grid: { display: false },
+        ticks: { color: '#6b7280' }
+      }
+    }
+  }
 });
+
+// Auto-refresh metrics every 30s
+setInterval(async () => {
+  try {
+    const res = await fetch('/api/dashboard-metrics');
+    const data = await res.json();
+    document.getElementById('dailyOrders').textContent = data.daily_orders;
+    document.getElementById('dailyItems').textContent = data.daily_items;
+    document.getElementById('activePersonnel').textContent = data.active_personnel;
+    document.getElementById('returnRate').textContent = `%${data.return_rate}`;
+  } catch {}
+}, 30000);
 </script>
 {% endblock %}
+

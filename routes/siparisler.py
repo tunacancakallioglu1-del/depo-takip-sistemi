@@ -119,6 +119,61 @@ def excel_yukle():
     })
 
 
+@siparisler_bp.route('/api/<int:order_id>', methods=['PUT'])
+def api_guncelle(order_id):
+    order = Order.query.get_or_404(order_id)
+    data = request.json or {}
+    eski = {
+        'siparis_no': order.siparis_no,
+        'beden': order.beden,
+        'adet': order.adet,
+        'durum': order.durum,
+    }
+
+    if 'beden' in data:
+        order.beden = str(data['beden'] or '').strip() or None
+    if 'adet' in data:
+        adet = int(float(data['adet'] or 0))
+        if adet <= 0:
+            return jsonify({'basarili': False, 'mesaj': 'Adet 0 veya negatif olamaz'}), 400
+        order.adet = adet
+    if 'durum' in data:
+        order.durum = str(data['durum']).strip()
+
+    log_audit('update', 'orders', order_id, eski_deger=eski, yeni_deger={'beden': order.beden, 'adet': order.adet, 'durum': order.durum})
+    db.session.commit()
+    return jsonify({'basarili': True, 'mesaj': 'Sipariş güncellendi'})
+
+
+@siparisler_bp.route('/api/<int:order_id>', methods=['DELETE'])
+def api_sil(order_id):
+    order = Order.query.get_or_404(order_id)
+    log_audit('delete', 'orders', order_id, eski_deger={'siparis_no': order.siparis_no})
+    db.session.delete(order)
+    db.session.commit()
+    return jsonify({'basarili': True, 'mesaj': 'Sipariş silindi'})
+
+
+@siparisler_bp.route('/api/gecmis')
+def api_gecmis():
+    from database import ExcelUpload
+    uploads = ExcelUpload.query.filter_by(modul='siparis').order_by(ExcelUpload.yukleme_tarihi.desc()).all()
+    return jsonify({
+        'basarili': True,
+        'gecmis': [
+            {
+                'id': u.id,
+                'dosya_adi': u.dosya_adi,
+                'yukleme_tarihi': u.yukleme_tarihi.strftime('%Y-%m-%d %H:%M'),
+                'toplam_satir': u.toplam_satir,
+                'basarili': u.basarili,
+                'basarisiz': u.basarisiz,
+            }
+            for u in uploads
+        ],
+    })
+
+
 @siparisler_bp.route('/api/list')
 def api_list():
     page = max(int(request.args.get('page', 1)), 1)

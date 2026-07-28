@@ -6,7 +6,7 @@ from datetime import datetime
 import pandas as pd
 from flask import Blueprint, render_template, request, jsonify, send_file
 from sqlalchemy import func
-from database import db, Order, Return, Product, Personel, Toplama
+from database import db, Order, Return, Product, Personel, Toplama, Kayit
 
 raporlar_bp = Blueprint('raporlar', __name__, url_prefix='/raporlar')
 
@@ -39,6 +39,35 @@ def personel_raporu():
             'personel': row.personel,
             'siparis_sayisi': int(row.siparis_sayisi),
             'urun_sayisi': int(row.urun_sayisi),
+        }
+        for row in query.all()
+    ]
+    return jsonify({'basarili': True, 'veri': rows})
+
+
+@raporlar_bp.route('/api/gunluk-personel')
+def gunluk_personel_raporu():
+    """Günlük kayıtlar bazında personel raporu"""
+    query = db.session.query(
+        Personel.ad.label('personel'),
+        Kayit.tarih,
+        Toplama.ad.label('toplama'),
+        func.coalesce(func.sum(Kayit.trendyol_siparis), 0).label('trendyol_siparis'),
+        func.coalesce(func.sum(Kayit.trendyol_fatura), 0).label('trendyol_fatura'),
+        func.coalesce(func.sum(Kayit.diger_pazar), 0).label('diger_pazar'),
+    ).join(Personel, Kayit.personel_id == Personel.id
+    ).join(Toplama, Kayit.toplama_id == Toplama.id
+    ).group_by(Personel.id, Kayit.tarih, Toplama.id).order_by(Kayit.tarih.desc())
+
+    rows = [
+        {
+            'personel': row.personel,
+            'tarih': row.tarih,
+            'toplama': row.toplama,
+            'trendyol_siparis': float(row.trendyol_siparis),
+            'trendyol_fatura': float(row.trendyol_fatura),
+            'diger_pazar': float(row.diger_pazar),
+            'toplam': float(row.trendyol_siparis) + float(row.trendyol_fatura) + float(row.diger_pazar),
         }
         for row in query.all()
     ]
@@ -98,20 +127,56 @@ def iade_analiz():
     return jsonify({'basarili': True, 'veri': rows})
 
 
+@raporlar_bp.route('/api/prim')
+def prim_raporu():
+    """Personel bazlı prim raporu"""
+    prim_siparis = float(request.args.get('prim_siparis', 0))
+    prim_urun = float(request.args.get('prim_urun', 0))
+
+    personel_query = db.session.query(
+        Personel.id,
+        Personel.ad.label('personel'),
+        func.count(func.distinct(Order.siparis_no)).label('siparis_sayisi'),
+        func.coalesce(func.sum(Order.adet), 0).label('urun_sayisi'),
+        func.count(func.distinct(Return.id)).label('iade_sayisi'),
+    ).outerjoin(Order, Order.personel_id == Personel.id
+    ).outerjoin(Return, Return.siparis_no == Order.siparis_no
+    ).group_by(Personel.id)
+
+    rows = []
+    for row in personel_query.all():
+        siparis = int(row.siparis_sayisi)
+        urun = int(row.urun_sayisi)
+        iade = int(row.iade_sayisi)
+        prim = siparis * prim_siparis + urun * prim_urun
+        rows.append({
+            'personel': row.personel,
+            'siparis_sayisi': siparis,
+            'urun_sayisi': urun,
+            'iade_sayisi': iade,
+            'prim': round(prim, 2),
+        })
+
+    return jsonify({'basarili': True, 'veri': rows})
+
+
 @raporlar_bp.route('/api/export')
 def export_report():
     rapor_tipi = request.args.get('tip', 'personel')
-    endpoint_map = {
-        'personel': personel_raporu,
-        'toplama': toplama_raporu,
-        'urun': urun_raporu,
-        'iade': iade_analiz,
+
+    payload_map = {
+        'personel': lambda: personel_raporu().get_json().get('veri', []),
+        'toplama': lambda: toplama_raporu().get_json().get('veri', []),
+        'urun': lambda: urun_raporu().get_json().get('veri', []),
+        'iade': lambda: iade_analiz().get_json().get('veri', []),
+        'gunluk_personel': lambda: gunluk_personel_raporu().get_json().get('veri', []),
+        'prim': lambda: prim_raporu().get_json().get('veri', []),
     }
 
-    if rapor_tipi not in endpoint_map:
+    if rapor_tipi not in payload_map:
         return jsonify({'basarili': False, 'mesaj': 'Geçersiz rapor tipi'}), 400
 
-    payload = endpoint_map[rapor_tipi]().json.get('veri', [])
+    payload = payload_map[rapor_tipi]()
     df = pd.DataFrame(payload)
     out = BytesIO()
     with pd.ExcelWriter(out, engine='openpyxl') as writer:

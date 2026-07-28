@@ -1,13 +1,314 @@
 {% extends 'base.html' %}
 {% block title %}Sipariş Yönetimi{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <h3>Sipariş Yönetimi</h3>
-    <a class="btn btn-outline-primary" href="/siparisler/api/template">Sipariş Şablonu</a>
+
+<div class="page-header">
+  <h1 class="page-title">🛒 Sipariş Yönetimi</h1>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="/siparisler/api/template" class="btn btn-success btn-sm">📥 Şablon İndir</a>
+    <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#sipExcelModal">📤 Excel Yükle</button>
+    <button class="btn btn-outline-secondary btn-sm" onclick="loadGecmis()">📂 Yükleme Geçmişi</button>
+  </div>
 </div>
-<p>Excel yükleme sırasında hatalı satırlar raporlanır, doğru satırlar işlemeye devam eder.</p>
-<ul>
-    <li>Yükleme: <code>POST /siparisler/api/excel-yukle</code></li>
-    <li>Liste: <code>GET /siparisler/api/list</code></li>
-</ul>
+
+<!-- Upload Result -->
+<div id="uploadResult" class="mb-3"></div>
+
+<!-- Filters -->
+<div class="card mb-3">
+  <div class="card-body py-2">
+    <div class="row g-2 align-items-center">
+      <div class="col-auto">
+        <input type="text" class="form-control form-control-sm" id="filterSipNo" placeholder="Sipariş No...">
+      </div>
+      <div class="col-auto">
+        <button class="btn btn-sm btn-primary" onclick="loadOrders(1)">🔍 Ara</button>
+        <button class="btn btn-sm btn-outline-secondary" onclick="clearFilters()">✕ Temizle</button>
+      </div>
+      <div class="col-auto ms-auto">
+        <span class="text-muted small" id="totalCount">Yükleniyor...</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Table -->
+<div class="card">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table mb-0">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Sipariş No</th>
+            <th>Tarih</th>
+            <th>Ürün Kodu</th>
+            <th>Beden</th>
+            <th>Adet</th>
+            <th>Toplama</th>
+            <th>Personel</th>
+            <th>Durum</th>
+            <th>İşlemler</th>
+          </tr>
+        </thead>
+        <tbody id="ordersBody">
+          <tr><td colspan="10" class="text-center py-4 text-muted">Yükleniyor...</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="p-3" id="ordersPagination"></div>
+  </div>
+</div>
+
+<!-- ── Excel Yükle Modal ── -->
+<div class="modal fade" id="sipExcelModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">📤 Sipariş Excel Yükle</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-info small">
+          <strong>Şablon sütunları (sırasıyla):</strong><br>
+          Siparis No | Tarih | Urun Kodu | Beden | Adet | Kargo Kodu | Termin Tarihi | Personel
+        </div>
+        <div class="alert alert-warning small">
+          ⚠ Aynı sipariş numarasına ait birden fazla satır <strong>1 sipariş</strong> olarak sayılır.<br>
+          ⚠ Hatalı satırlar işlemi durdurmaz, raporlanır.
+        </div>
+        <div class="upload-zone" id="sipUploadZone">
+          <div class="upload-zone-icon">📂</div>
+          <p class="fw-semibold mb-1">Excel dosyasını sürükleyin veya tıklayın</p>
+          <p class="text-muted small upload-filename">Dosya seçilmedi (.xlsx)</p>
+          <input type="file" id="sipExcelFile" accept=".xlsx,.xlsm" class="d-none">
+        </div>
+        <div id="sipExcelResult" class="mt-3"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Kapat</button>
+        <button type="button" class="btn btn-primary" onclick="sipExcelYukle()">🚀 Yükle</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Düzenle Modal ── -->
+<div class="modal fade" id="sipDuzenleModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">✏️ Sipariş Düzenle</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="sipDuzenleId">
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label">Beden</label>
+            <input type="text" class="form-control" id="sipDuzenleBeden">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Adet</label>
+            <input type="number" class="form-control" id="sipDuzenleAdet" min="1">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Durum</label>
+            <select class="form-select" id="sipDuzenleDurum">
+              <option>Yüklendi</option>
+              <option>Tamamlandı</option>
+              <option>İptal</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+        <button type="button" class="btn btn-warning" onclick="sipGuncelle()">💾 Güncelle</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Geçmiş Modal ── -->
+<div class="modal fade" id="gecmisModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">📂 Yükleme Geçmişi</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="gecmisBody">Yükleniyor...</div>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
+{% block extra_js %}
+<script>
+initUploadZone('sipUploadZone', 'sipExcelFile');
+
+let currentPage = 1;
+let currentTotal = 0;
+
+// ── Load Orders ───────────────────────────────────────
+async function loadOrders(page = 1) {
+  currentPage = page;
+  const sipNo = document.getElementById('filterSipNo').value.trim();
+  const { ok, data } = await apiFetch(`/siparisler/api/list?page=${page}&per_page=20`);
+  if (!ok) return;
+
+  const tbody = document.getElementById('ordersBody');
+  currentTotal = data.toplam;
+  document.getElementById('totalCount').textContent = `Toplam: ${data.toplam} kayıt`;
+
+  if (!data.kayitlar.length) {
+    tbody.innerHTML = '<tr><td colspan="10" class="text-center py-4 text-muted">Kayıt bulunamadı</td></tr>';
+    document.getElementById('ordersPagination').innerHTML = '';
+    return;
+  }
+
+  tbody.innerHTML = data.kayitlar.map((row, i) => `
+    <tr>
+      <td class="text-muted">${(page-1)*20 + i + 1}</td>
+      <td><strong>${row.siparis_no}</strong></td>
+      <td>${formatDate(row.tarih)}</td>
+      <td><span class="badge bg-primary-soft text-primary">${row.urun_kodu || '-'}</span></td>
+      <td>${row.beden || '-'}</td>
+      <td>${row.adet}</td>
+      <td>${row.toplama || '-'}</td>
+      <td>${row.personel || '-'}</td>
+      <td><span class="badge ${row.durum === 'Tamamlandı' ? 'bg-success' : 'bg-secondary'}">${row.durum || 'Yüklendi'}</span></td>
+      <td>
+        <button class="btn btn-sm btn-warning" onclick="openSipDuzenle(${row.id}, '${row.beden||''}', ${row.adet}, '${row.durum||'Yüklendi'}')">✏️</button>
+        <button class="btn btn-sm btn-danger" onclick="sipSil(${row.id})">🗑️</button>
+      </td>
+    </tr>`).join('');
+
+  const totalPages = Math.ceil(data.toplam / 20);
+  renderPagination('ordersPagination', page, totalPages, loadOrders);
+}
+
+function clearFilters() {
+  document.getElementById('filterSipNo').value = '';
+  loadOrders(1);
+}
+
+// ── Excel Upload ──────────────────────────────────────
+async function sipExcelYukle() {
+  const file = document.getElementById('sipExcelFile').files[0];
+  if (!file) { showAlert('warning', 'Dosya seçin!'); return; }
+
+  const fd = new FormData();
+  fd.append('file', file);
+  setLoading(true);
+  const { ok, data } = await apiFetch('/siparisler/api/excel-yukle', { method: 'POST', body: fd });
+  setLoading(false);
+
+  const res = document.getElementById('sipExcelResult');
+  if (data.basarili) {
+    const o = data.ozet;
+    res.innerHTML = `
+      <div class="alert alert-success">
+        <strong>✓ ${data.mesaj}</strong>
+        <div class="result-summary mt-2">
+          <div class="row g-2 text-center">
+            <div class="col-4"><div class="card"><div class="card-body py-2">
+              <div class="fw-bold fs-4 text-primary">${o.tekil_siparis}</div>
+              <div class="small text-muted">Tekil Sipariş</div>
+            </div></div></div>
+            <div class="col-4"><div class="card"><div class="card-body py-2">
+              <div class="fw-bold fs-4 text-success">${o.islenen_satir}</div>
+              <div class="small text-muted">Başarılı Satır</div>
+            </div></div></div>
+            <div class="col-4"><div class="card"><div class="card-body py-2">
+              <div class="fw-bold fs-4 text-danger">${o.hatali_satir}</div>
+              <div class="small text-muted">Hatalı Satır</div>
+            </div></div></div>
+          </div>
+        </div>
+      </div>
+      ${data.tanimsiz_urunler?.length ? `<div class="alert alert-warning small">
+        <strong>Tanımsız Ürünler (${data.tanimsiz_urunler.length}):</strong>
+        ${data.tanimsiz_urunler.slice(0,5).map(u => `Satır ${u.satir}: ${u.kod}`).join(', ')}
+        ${data.tanimsiz_urunler.length > 5 ? '...' : ''}
+      </div>` : ''}`;
+    loadOrders(1);
+  } else {
+    res.innerHTML = `<div class="alert alert-danger">✗ ${data.mesaj}
+      ${data.hatalar ? '<ul class="mb-0 mt-2">' + data.hatalar.map(h=>`<li>Satır ${h.satir}: ${h.hata}</li>`).join('') + '</ul>' : ''}
+    </div>`;
+  }
+}
+
+// ── Edit / Delete ─────────────────────────────────────
+function openSipDuzenle(id, beden, adet, durum) {
+  document.getElementById('sipDuzenleId').value = id;
+  document.getElementById('sipDuzenleBeden').value = beden;
+  document.getElementById('sipDuzenleAdet').value = adet;
+  document.getElementById('sipDuzenleDurum').value = durum;
+  new bootstrap.Modal(document.getElementById('sipDuzenleModal')).show();
+}
+
+async function sipGuncelle() {
+  const id = document.getElementById('sipDuzenleId').value;
+  setLoading(true);
+  const { data } = await apiFetch(`/siparisler/api/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      beden: document.getElementById('sipDuzenleBeden').value,
+      adet: document.getElementById('sipDuzenleAdet').value,
+      durum: document.getElementById('sipDuzenleDurum').value,
+    })
+  });
+  setLoading(false);
+  if (data.basarili) {
+    showAlert('success', '✓ ' + data.mesaj);
+    bootstrap.Modal.getInstance(document.getElementById('sipDuzenleModal')).hide();
+    loadOrders(currentPage);
+  } else {
+    showAlert('danger', '✗ ' + data.mesaj);
+  }
+}
+
+function sipSil(id) {
+  confirmAction('Bu sipariş silinecek. Emin misiniz?', async () => {
+    setLoading(true);
+    const { data } = await apiFetch(`/siparisler/api/${id}`, { method: 'DELETE' });
+    setLoading(false);
+    if (data.basarili) {
+      showAlert('success', '✓ Silindi');
+      loadOrders(currentPage);
+    } else {
+      showAlert('danger', '✗ ' + data.mesaj);
+    }
+  });
+}
+
+// ── Geçmiş ───────────────────────────────────────────
+async function loadGecmis() {
+  const { data } = await apiFetch('/siparisler/api/gecmis');
+  const body = document.getElementById('gecmisBody');
+  if (!data.basarili || !data.gecmis.length) {
+    body.innerHTML = '<p class="text-muted text-center py-3">Geçmiş bulunamadı</p>';
+  } else {
+    body.innerHTML = `<table class="table table-sm">
+      <thead><tr><th>Dosya</th><th>Tarih</th><th>Toplam</th><th>Başarılı</th><th>Hatalı</th></tr></thead>
+      <tbody>${data.gecmis.map(g => `<tr>
+        <td>${g.dosya_adi}</td>
+        <td>${g.yukleme_tarihi}</td>
+        <td>${g.toplam_satir}</td>
+        <td class="text-success">${g.basarili}</td>
+        <td class="text-danger">${g.basarisiz}</td>
+      </tr>`).join('')}</tbody>
+    </table>`;
+  }
+  new bootstrap.Modal(document.getElementById('gecmisModal')).show();
+}
+
+// Initial load
+loadOrders(1);
+</script>
+{% endblock %}
+

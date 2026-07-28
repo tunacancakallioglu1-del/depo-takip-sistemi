@@ -1,6 +1,120 @@
 {% extends 'base.html' %}
 {% block title %}Audit Log{% endblock %}
 {% block content %}
-<h3>Audit Log</h3>
-<p>Tüm işlem geçmişi API üzerinden izlenebilir: <code>GET /audit-log/api/list</code></p>
+
+<div class="page-header">
+  <h1 class="page-title">🔍 Audit Log</h1>
+  <span class="text-muted small">Tüm sistem işlemlerinin kaydı</span>
+</div>
+
+<!-- Filters -->
+<div class="card mb-3">
+  <div class="card-body py-2">
+    <div class="row g-2 align-items-center">
+      <div class="col-auto">
+        <input type="text" class="form-control form-control-sm" id="filterIslem" placeholder="İşlem ara...">
+      </div>
+      <div class="col-auto">
+        <select class="form-select form-select-sm" id="filterTablo">
+          <option value="">Tüm Tablolar</option>
+          <option>kayitlar</option>
+          <option>products</option>
+          <option>orders</option>
+          <option>returns</option>
+          <option>excel_uploads</option>
+        </select>
+      </div>
+      <div class="col-auto">
+        <button class="btn btn-sm btn-primary" onclick="loadLogs(1)">🔍 Filtrele</button>
+        <button class="btn btn-sm btn-outline-secondary" onclick="clearFilters()">✕</button>
+      </div>
+      <div class="col-auto ms-auto">
+        <span class="text-muted small" id="logCount">...</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table mb-0">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Tarih</th>
+            <th>İşlem</th>
+            <th>Tablo</th>
+            <th>Kayıt ID</th>
+            <th>Kullanıcı</th>
+            <th>Sonuç</th>
+          </tr>
+        </thead>
+        <tbody id="auditBody">
+          <tr><td colspan="7" class="text-center py-4 text-muted">Yükleniyor...</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="p-3" id="auditPagination"></div>
+  </div>
+</div>
+
 {% endblock %}
+{% block extra_js %}
+<script>
+let currentPage = 1;
+
+const islemColors = {
+  create: 'bg-success',
+  update: 'bg-warning',
+  delete: 'bg-danger',
+  excel_yukleme_basladi: 'bg-info',
+  excel_yukleme_tamamlandi: 'bg-primary',
+  excel_toplu_yukleme: 'bg-secondary',
+};
+
+async function loadLogs(page = 1) {
+  currentPage = page;
+  const islem = document.getElementById('filterIslem').value.trim();
+  const tablo = document.getElementById('filterTablo').value;
+
+  let url = `/audit-log/api/list?page=${page}&per_page=30`;
+  if (islem) url += `&islem=${encodeURIComponent(islem)}`;
+  if (tablo) url += `&tablo=${encodeURIComponent(tablo)}`;
+
+  const { ok, data } = await apiFetch(url);
+  if (!ok) return;
+
+  document.getElementById('logCount').textContent = `Toplam: ${data.toplam} kayıt`;
+  const tbody = document.getElementById('auditBody');
+
+  if (!data.kayitlar.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-muted">Kayıt bulunamadı</td></tr>';
+    document.getElementById('auditPagination').innerHTML = '';
+    return;
+  }
+
+  tbody.innerHTML = data.kayitlar.map((log, i) => `
+    <tr>
+      <td class="text-muted small">${(page-1)*30 + i + 1}</td>
+      <td class="small">${log.tarih}</td>
+      <td><span class="badge ${islemColors[log.islem] || 'bg-secondary'}">${log.islem}</span></td>
+      <td class="small">${log.tablo}</td>
+      <td class="small text-muted">${log.kayit_id || '-'}</td>
+      <td class="small">${log.kullanici_id}</td>
+      <td><span class="badge ${log.sonuc === 'basarili' ? 'bg-success' : 'bg-danger'}">${log.sonuc}</span></td>
+    </tr>`).join('');
+
+  renderPagination('auditPagination', page, data.toplam_sayfa, loadLogs);
+}
+
+function clearFilters() {
+  document.getElementById('filterIslem').value = '';
+  document.getElementById('filterTablo').value = '';
+  loadLogs(1);
+}
+
+loadLogs(1);
+</script>
+{% endblock %}
+

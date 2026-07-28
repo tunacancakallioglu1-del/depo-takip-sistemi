@@ -92,6 +92,88 @@ def excel_yukle():
     })
 
 
+@iadeler_bp.route('/api/<int:return_id>', methods=['PUT'])
+def api_guncelle(return_id):
+    ret = Return.query.get_or_404(return_id)
+    data = request.json or {}
+    eski = {'siparis_no': ret.siparis_no, 'beden': ret.beden, 'adet': ret.adet, 'sebebi': ret.sebebi}
+
+    if 'beden' in data:
+        ret.beden = str(data['beden'] or '').strip() or None
+    if 'adet' in data:
+        adet = int(float(data['adet'] or 0))
+        if adet <= 0:
+            return jsonify({'basarili': False, 'mesaj': 'Adet 0 veya negatif olamaz'}), 400
+        ret.adet = adet
+    if 'sebebi' in data:
+        ret.sebebi = str(data['sebebi'] or '').strip() or None
+
+    log_audit('update', 'returns', return_id, eski_deger=eski, yeni_deger={'beden': ret.beden, 'adet': ret.adet, 'sebebi': ret.sebebi})
+    db.session.commit()
+    return jsonify({'basarili': True, 'mesaj': 'İade güncellendi'})
+
+
+@iadeler_bp.route('/api/<int:return_id>', methods=['DELETE'])
+def api_sil(return_id):
+    ret = Return.query.get_or_404(return_id)
+    log_audit('delete', 'returns', return_id, eski_deger={'siparis_no': ret.siparis_no})
+    db.session.delete(ret)
+    db.session.commit()
+    return jsonify({'basarili': True, 'mesaj': 'İade silindi'})
+
+
+@iadeler_bp.route('/api/analizler')
+def api_analizler():
+    from database import Product, Toplama, Personel
+    from sqlalchemy import func
+
+    # En fazla iade edilen ürünler
+    urun_iadeleri = db.session.query(
+        Product.ana_kod,
+        Product.marka,
+        func.coalesce(func.sum(Return.adet), 0).label('adet'),
+    ).outerjoin(Return, Return.urun_id == Product.id).group_by(Product.id).order_by(func.sum(Return.adet).desc()).limit(10).all()
+
+    # İade nedenleri
+    nedenler = db.session.query(
+        Return.sebebi,
+        func.coalesce(func.sum(Return.adet), 0).label('adet'),
+    ).group_by(Return.sebebi).all()
+
+    # Toplama bazlı iadeler
+    toplama_iadeleri = db.session.query(
+        Toplama.ad.label('toplama'),
+        func.coalesce(func.sum(Return.adet), 0).label('adet'),
+    ).outerjoin(Return, Return.toplama_id == Toplama.id).group_by(Toplama.id).all()
+
+    return jsonify({
+        'basarili': True,
+        'urun_iadeleri': [{'kod': r.ana_kod, 'marka': r.marka, 'adet': int(r.adet)} for r in urun_iadeleri],
+        'iade_nedenleri': [{'sebep': r.sebebi or 'Belirtilmedi', 'adet': int(r.adet)} for r in nedenler],
+        'toplama_iadeleri': [{'toplama': r.toplama, 'adet': int(r.adet)} for r in toplama_iadeleri],
+    })
+
+
+@iadeler_bp.route('/api/gecmis')
+def api_gecmis():
+    from database import ExcelUpload
+    uploads = ExcelUpload.query.filter_by(modul='iade').order_by(ExcelUpload.yukleme_tarihi.desc()).all()
+    return jsonify({
+        'basarili': True,
+        'gecmis': [
+            {
+                'id': u.id,
+                'dosya_adi': u.dosya_adi,
+                'yukleme_tarihi': u.yukleme_tarihi.strftime('%Y-%m-%d %H:%M'),
+                'toplam_satir': u.toplam_satir,
+                'basarili': u.basarili,
+                'basarisiz': u.basarisiz,
+            }
+            for u in uploads
+        ],
+    })
+
+
 @iadeler_bp.route('/api/list')
 def api_list():
     page = max(int(request.args.get('page', 1)), 1)
