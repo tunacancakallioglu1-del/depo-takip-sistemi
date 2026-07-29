@@ -209,16 +209,16 @@ def excel_yukle():
 
 @kayitlar_bp.route('/api/senkronize', methods=['POST'])
 def senkronize_et():
-    """Siparişlerden kayıtlara senkronize et.
+    """Seçili tarihin siparişlerini kayıtlara senkronize et.
 
-    Bugünün (veya gönderilen tarihin) senkronize edilmemiş siparişlerini
-    personel+toplama bazında gruplar ve kayıtlara Trendyol Sipariş olarak ekler.
-    Aynı gün aynı personel+toplama kaydı varsa üzerine ekleme yapar.
+    BEKLEMEDE ve TAMAMLANDI olan siparişleri personel+toplama bazında gruplar
+    ve kayıtlara Trendyol Sipariş sayısı olarak GÜNCELLER (üzerine yazar).
+    BEKLEMEDE siparişleri TAMAMLANDI olarak işaretler.
     """
     try:
+        from sqlalchemy import func as sqlfunc
         veri = request.get_json() or {}
         tarih_str = veri.get('tarih')
-        upload_id = veri.get('upload_id')
 
         if tarih_str:
             tarih_obj = datetime.strptime(tarih_str, '%Y-%m-%d').date()
@@ -227,17 +227,22 @@ def senkronize_et():
 
         tarih_db = tarih_obj.strftime('%d.%m.%Y')
 
-        # Senkronize edilmemiş siparişleri filtrele
-        query = Order.query.filter_by(senkronize_edildi=False)
-        if upload_id:
-            query = query.filter_by(excel_yukleme_id=int(upload_id))
-
+        # Seçili tarihin BEKLEMEDE ve TAMAMLANDI siparişlerini al
+        query = Order.query.filter(
+            Order.durum.in_(['BEKLEMEDE', 'TAMAMLANDI']),
+            sqlfunc.date(Order.tarih) == tarih_obj.strftime('%Y-%m-%d'),
+        )
         siparisler = query.all()
 
         if not siparisler:
-            return jsonify({'basarili': True, 'mesaj': 'Senkronize edilecek sipariş bulunamadı.', 'yeni': 0, 'guncellendi': 0})
+            return jsonify({
+                'basarili': True,
+                'mesaj': f'{tarih_db} tarihinde senkronize edilecek sipariş bulunamadı.',
+                'yeni': 0,
+                'guncellendi': 0,
+            })
 
-        # Personel+Toplama bazında sayıları topla
+        # Personel+Toplama bazında sayıları topla (personel_id olan siparişler için)
         gruplar = {}
         for s in siparisler:
             if not s.personel_id:
@@ -247,6 +252,7 @@ def senkronize_et():
 
         yeni = 0
         guncellendi = 0
+        now = datetime.now()
 
         for (personel_id, toplama_id), siparis_sayisi in gruplar.items():
             kayit = Kayit.query.filter_by(
@@ -256,9 +262,10 @@ def senkronize_et():
             ).first()
 
             if kayit:
-                kayit.trendyol_siparis = (kayit.trendyol_siparis or 0) + siparis_sayisi
+                # Üzerine yaz (re-sync desteği)
+                kayit.trendyol_siparis = siparis_sayisi
                 kayit.senkronizasyon_sayisi = (kayit.senkronizasyon_sayisi or 0) + 1
-                kayit.son_senkronizasyon = datetime.now()
+                kayit.son_senkronizasyon = now
                 guncellendi += 1
             else:
                 kayit = Kayit(
@@ -270,25 +277,26 @@ def senkronize_et():
                     diger_pazar=0,
                     not_alan='',
                     senkronizasyon_sayisi=1,
-                    son_senkronizasyon=datetime.now(),
+                    son_senkronizasyon=now,
                 )
                 db.session.add(kayit)
                 db.session.flush()
                 yeni += 1
 
-        # Siparişleri senkronize edildi olarak işaretle
-        now = datetime.now()
+        # BEKLEMEDE siparişlerini TAMAMLANDI olarak işaretle
         for s in siparisler:
-            if s.personel_id:
+            if s.durum == 'BEKLEMEDE':
+                s.durum = 'TAMAMLANDI'
                 s.senkronize_edildi = True
                 s.senkronize_tarihi = now
 
         db.session.commit()
-        log_audit('senkronizasyon', 'kayitlar', None, yeni_deger={'yeni': yeni, 'guncellendi': guncellendi})
+        log_audit('senkronizasyon', 'kayitlar', None,
+                  yeni_deger={'tarih': tarih_db, 'yeni': yeni, 'guncellendi': guncellendi})
 
         return jsonify({
             'basarili': True,
-            'mesaj': f'Senkronizasyon tamamlandı: {yeni} yeni kayıt, {guncellendi} kayıt güncellendi.',
+            'mesaj': f'{yeni} yeni kayıt oluşturuldu, {guncellendi} kayıt güncellendi.',
             'yeni': yeni,
             'guncellendi': guncellendi,
         })
