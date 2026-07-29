@@ -14,6 +14,7 @@
   <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#iadeTab" onclick="loadIadeAnaliz()">↩️ İade Analiz</button></li>
   <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#gunlukTab" onclick="loadGunlukRapor()">📅 Günlük</button></li>
   <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#primTab" onclick="loadPrimRapor()">💰 Prim</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#baglantiTab" onclick="loadBaglantiRapor()">🔗 Bağlantı</button></li>
 </ul>
 
 <div class="tab-content">
@@ -173,6 +174,98 @@
     </div>
   </div>
 
+  <!-- Bağlantı Raporu -->
+  <div class="tab-pane fade" id="baglantiTab">
+
+    <!-- Personel Filtresi -->
+    <div class="card mb-3 border-primary">
+      <div class="card-header bg-primary bg-opacity-10">
+        <strong>👤 Personel Filtresi — İsim ile Bağlantılı Raporlar</strong>
+      </div>
+      <div class="card-body py-2">
+        <div class="row g-2 align-items-end">
+          <div class="col-md-5" style="position:relative;">
+            <label class="form-label small mb-1">Personel Ara:</label>
+            <input type="text" class="form-control form-control-sm" id="baglantiIsimArama"
+              placeholder="İsim yazın..." autocomplete="off" oninput="baglantiIsimAra(this.value)">
+            <div id="baglantiIsimOneriler" class="list-group" style="
+              position:absolute; top:100%; left:0; right:0; z-index:1050;
+              display:none; max-height:200px; overflow-y:auto;
+              border:1px solid #dee2e6; border-radius:0 0 4px 4px; background:#fff;
+            "></div>
+          </div>
+          <div class="col-md-4">
+            <div id="baglantiSecilenDurum" class="small" style="display:none;"></div>
+          </div>
+          <div class="col-md-3">
+            <button class="btn btn-secondary btn-sm w-100" onclick="baglantiSifirla()">↺ Tümünü Göster</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Siparişler Raporu -->
+    <div class="card mb-3">
+      <div class="card-header"><strong>📦 Siparişler Raporu</strong></div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-sm mb-0">
+            <thead>
+              <tr>
+                <th>Tarih</th><th>Personel</th><th>Toplama</th>
+                <th>Sipariş No</th><th>Ürün Kodu</th><th>Beden</th><th>Durum</th>
+              </tr>
+            </thead>
+            <tbody id="baglantiSiparislerBody">
+              <tr><td colspan="7" class="text-center py-3 text-muted">Yükleniyor...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Ürünler Raporu -->
+    <div class="card mb-3">
+      <div class="card-header"><strong>🏭 Ürünler Raporu (Kayıt Ayrıntıları)</strong></div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-sm mb-0">
+            <thead>
+              <tr>
+                <th>Tarih</th><th>Personel</th><th>Ürün Kodu</th>
+                <th>Toplama</th><th>Beden</th><th>Adet</th>
+              </tr>
+            </thead>
+            <tbody id="baglantiUrunlerBody">
+              <tr><td colspan="6" class="text-center py-3 text-muted">Yükleniyor...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Kayıtlar Raporu -->
+    <div class="card mb-3">
+      <div class="card-header"><strong>📊 Kayıtlar Raporu</strong></div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-sm mb-0">
+            <thead>
+              <tr>
+                <th>Tarih</th><th>Personel</th><th>Toplama</th>
+                <th>Sipariş Sayısı</th><th>Senkronizasyon</th><th>Senkronizasyon Tarihi</th>
+              </tr>
+            </thead>
+            <tbody id="baglantiKayitlarBody">
+              <tr><td colspan="6" class="text-center py-3 text-muted">Yükleniyor...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
 </div>
 {% endblock %}
 {% block extra_js %}
@@ -283,6 +376,97 @@ async function loadPrimRapor() {
 
 // Initial loads
 loadPersonelRapor();
+
+// ── Bağlantı Raporu ──────────────────────────────────────
+let baglantiPersonelId = null;
+
+function baglantiIsimAra(q) {
+  const oneriDiv = document.getElementById('baglantiIsimOneriler');
+  if (q.length < 1) { oneriDiv.style.display = 'none'; return; }
+  apiFetch(`/personeller/api/ara?q=${encodeURIComponent(q)}`).then(({ data }) => {
+    if (!data.personeller || data.personeller.length === 0) {
+      oneriDiv.style.display = 'none'; return;
+    }
+    oneriDiv.innerHTML = data.personeller.map(p =>
+      `<button type="button" class="list-group-item list-group-item-action py-1 px-2"
+        onclick="baglantiPersonelSec(${p.id}, '${p.ad.replace(/'/g, "\\'")}')">
+        ${p.ad}
+       </button>`
+    ).join('');
+    oneriDiv.style.display = 'block';
+  });
+}
+
+function baglantiPersonelSec(id, ad) {
+  baglantiPersonelId = id;
+  document.getElementById('baglantiIsimArama').value = ad;
+  document.getElementById('baglantiIsimOneriler').style.display = 'none';
+  const durum = document.getElementById('baglantiSecilenDurum');
+  durum.innerHTML = `<span class="badge bg-success">✅ ${ad} seçildi</span>`;
+  durum.style.display = 'block';
+  loadBaglantiRapor();
+}
+
+function baglantiSifirla() {
+  baglantiPersonelId = null;
+  document.getElementById('baglantiIsimArama').value = '';
+  document.getElementById('baglantiIsimOneriler').style.display = 'none';
+  document.getElementById('baglantiSecilenDurum').style.display = 'none';
+  loadBaglantiRapor();
+}
+
+async function loadBaglantiRapor() {
+  const body = JSON.stringify({ personel_id: baglantiPersonelId });
+  const opts = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body };
+
+  // Siparişler
+  apiFetch('/raporlar/api/baglanti/siparisler', opts).then(({ data }) => {
+    const tbody = document.getElementById('baglantiSiparislerBody');
+    if (!data.basarili || !data.siparisler.length) {
+      tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-2">📭 Sipariş bulunamadı</td></tr>'; return;
+    }
+    tbody.innerHTML = data.siparisler.map(s => `<tr>
+      <td>${s.tarih}</td><td>${s.personel}</td><td>${s.toplama}</td>
+      <td><span class="badge bg-secondary">${s.siparis_no}</span></td>
+      <td>${s.urun_kodu}</td><td>${s.beden}</td>
+      <td><span class="badge ${s.durum === 'TAMAMLANDI' ? 'bg-success' : s.durum === 'BEKLEMEDE' ? 'bg-warning text-dark' : 'bg-danger'}">${s.durum}</span></td>
+    </tr>`).join('');
+  });
+
+  // Ürünler
+  apiFetch('/raporlar/api/baglanti/urunler', opts).then(({ data }) => {
+    const tbody = document.getElementById('baglantiUrunlerBody');
+    if (!data.basarili || !data.urunler.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-2">📭 Ürün bulunamadı</td></tr>'; return;
+    }
+    tbody.innerHTML = data.urunler.map(u => `<tr>
+      <td>${u.tarih}</td><td>${u.personel}</td>
+      <td><span class="badge bg-primary-soft text-primary">${u.urun_kodu}</span></td>
+      <td>${u.toplama}</td><td>${u.beden}</td><td>${u.adet}</td>
+    </tr>`).join('');
+  });
+
+  // Kayıtlar
+  apiFetch('/raporlar/api/baglanti/kayitlar', opts).then(({ data }) => {
+    const tbody = document.getElementById('baglantiKayitlarBody');
+    if (!data.basarili || !data.kayitlar.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-2">📭 Kayıt bulunamadı</td></tr>'; return;
+    }
+    tbody.innerHTML = data.kayitlar.map(k => `<tr>
+      <td>${k.tarih}</td><td>${k.personel}</td><td>${k.toplama}</td>
+      <td>${formatNumber(k.siparis_sayisi)}</td>
+      <td>${k.senkronizasyon_sayisi > 0 ? `<span class="badge bg-success">${k.senkronizasyon_sayisi}×</span>` : '<span class="badge bg-secondary">Manuel</span>'}</td>
+      <td>${k.senkronizasyon_tarihi}</td>
+    </tr>`).join('');
+  });
+}
+
+// Close personel dropdown when clicking outside
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('#baglantiIsimArama') && !e.target.closest('#baglantiIsimOneriler')) {
+    document.getElementById('baglantiIsimOneriler').style.display = 'none';
+  }
+});
 </script>
 {% endblock %}
 
