@@ -16,13 +16,19 @@
   <div class="card-body py-2">
     <div class="row g-2 align-items-center">
       <div class="col-auto">
+        <button id="hataliGuncelleBtn" class="btn btn-success btn-sm" onclick="guncelleHataliSiparisler(this)">🔄 Siparişleri Güncelle</button>
+      </div>
+      <div class="col-auto">
+        <span id="guncelleMesaj" class="small d-none"></span>
+      </div>
+      <div class="col-auto ms-auto">
         <input type="text" class="form-control form-control-sm" id="filterKod" placeholder="Ürün Kodu...">
       </div>
       <div class="col-auto">
         <button class="btn btn-sm btn-primary" onclick="loadUrunler(1)">🔍 Ara</button>
         <button class="btn btn-sm btn-outline-secondary" onclick="clearFilter()">✕</button>
       </div>
-      <div class="col-auto ms-auto">
+      <div class="col-auto">
         <span class="text-muted small" id="urunCount"></span>
       </div>
     </div>
@@ -176,6 +182,43 @@
 initUploadZone('urunUploadZone', 'urunExcelFile');
 
 let currentPage = 1;
+
+async function guncelleHataliSiparisler(btn) {
+  const mesajDiv = document.getElementById('guncelleMesaj');
+  btn.disabled = true;
+  btn.textContent = '⏳ Güncelleniyor...';
+  mesajDiv.className = 'small d-none';
+
+  try {
+    const response = await fetch('/siparisler/guncelle-hatali', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const data = await response.json();
+
+    mesajDiv.classList.remove('d-none');
+    mesajDiv.classList.add('alert', 'py-1', 'px-2', 'mb-0');
+
+    if (data.status === 'success' || data.basarili) {
+      if ((data.duzeltilen || 0) > 0) mesajDiv.classList.add('alert-success');
+      else if ((data.hala_hatali || 0) > 0) mesajDiv.classList.add('alert-warning');
+      else mesajDiv.classList.add('alert-info');
+      mesajDiv.textContent = data.message || 'Güncelleme tamamlandı';
+      loadUrunler(currentPage);
+    } else {
+      mesajDiv.classList.add('alert-danger');
+      mesajDiv.textContent = data.message || data.mesaj || 'Güncelleme sırasında hata oluştu';
+    }
+  } catch (error) {
+    console.error('Güncelleme hatası:', error);
+    mesajDiv.classList.remove('d-none');
+    mesajDiv.classList.add('alert', 'alert-danger', 'py-1', 'px-2', 'mb-0');
+    mesajDiv.textContent = 'Güncelleme sırasında hata oluştu';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🔄 Siparişleri Güncelle';
+  }
+}
 
 async function loadUrunler(page = 1) {
   currentPage = page;

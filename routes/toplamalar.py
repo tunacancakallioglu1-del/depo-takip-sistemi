@@ -222,3 +222,4 @@ def toplama_excel_yukle(toplama_id):
         'ozet': {'toplam_satir': len(rows), 'basarili': basarili, 'hatali': len(hatalar)},
         'hatalar': hatalar,
     })
+

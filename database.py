@@ -24,7 +24,7 @@ class Personel(db.Model):
     eklenme_tarihi = db.Column(db.DateTime, default=datetime.now)
 
     # İlişkiler
-    kayitlar = db.relationship('Kayit', backref='personel', lazy=True, cascade='all, delete-orphan')
+    kayitlar = db.relationship('Kayit', backref='personel', lazy=True)
 
     def __repr__(self):
         return f'<Personel {self.ad}>'
@@ -65,7 +65,7 @@ class Kayit(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     tarih = db.Column(db.String(10), nullable=False)
-    personel_id = db.Column(db.Integer, db.ForeignKey('personeller.id'), nullable=False)
+    personel_id = db.Column(db.Integer, db.ForeignKey('personeller.id'), nullable=True)
     toplama_id = db.Column(db.Integer, db.ForeignKey('toplamalar.id'), nullable=False)
     trendyol_siparis = db.Column(db.Float, default=0)
     trendyol_fatura = db.Column(db.Float, default=0)
@@ -82,7 +82,7 @@ class Kayit(db.Model):
         return {
             'id': self.id,
             'tarih': self.tarih,
-            'personel': self.personel.ad,
+            'personel': self.personel.ad if self.personel else '',
             'personel_id': self.personel_id,
             'toplama': self.toplama.ad,
             'toplama_id': self.toplama_id,
@@ -203,6 +203,7 @@ class Order(db.Model):
     senkronize_edildi = db.Column(db.Boolean, default=False, nullable=False)
     senkronize_tarihi = db.Column(db.DateTime, nullable=True)
     referans_kayit_id = db.Column(db.Integer, nullable=True)
+    grup_baslangic_satiri = db.Column(db.Boolean, default=False, nullable=False)
 
     urun = db.relationship('Product', backref=db.backref('orders', lazy=True))
     toplama = db.relationship('Toplama', backref=db.backref('orders', lazy=True))
@@ -269,6 +270,71 @@ class AuditLog(db.Model):
     tarih = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 
+class AdetFiltresi(db.Model):
+    """Adet Filtresi — Toplama + Ürün + Beden bazında adet aralığı ayırımı"""
+    __tablename__ = 'adet_filtreleri'
+    __table_args__ = (
+        db.Index('ix_adet_filtre_toplama', 'toplama_id'),
+        db.Index('ix_adet_filtre_urun', 'urun_kodu'),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    toplama_id = db.Column(db.Integer, db.ForeignKey('toplamalar.id'), nullable=False)
+    urun_kodu = db.Column(db.String(120), nullable=False)
+    beden = db.Column(db.String(50), nullable=True)
+    min_adet = db.Column(db.Integer, nullable=False)
+    max_adet = db.Column(db.Integer, nullable=True)  # NULL = sınırsız
+    olusturulma_tarihi = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    toplama = db.relationship('Toplama', backref=db.backref('adet_filtreleri', lazy=True, cascade='all, delete-orphan'))
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'toplama_id': self.toplama_id,
+            'toplama': self.toplama.ad if self.toplama else None,
+            'urun_kodu': self.urun_kodu,
+            'beden': self.beden or '',
+            'min_adet': self.min_adet,
+            'max_adet': self.max_adet,
+            'aralik': f"{self.min_adet}-{self.max_adet}" if self.max_adet else f"{self.min_adet}+",
+        }
+
+
+class KayitAyrinti(db.Model):
+    """Kayıt Ayrıntısı — Kayıt'ın ürün/beden/adet detayları"""
+    __tablename__ = 'kayit_ayrintilari'
+    __table_args__ = (
+        db.Index('ix_kayit_ayrinti_kayit', 'kayit_id'),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    kayit_id = db.Column(db.Integer, db.ForeignKey('kayitlar.id'), nullable=False)
+    urun_kodu = db.Column(db.String(120), nullable=False)
+    beden = db.Column(db.String(50), nullable=True)
+    adet = db.Column(db.Integer, nullable=False)
+    min_adet_filtre = db.Column(db.Integer, nullable=True)   # AdetFiltresi min (NULL = filtresiz)
+    max_adet_filtre = db.Column(db.Integer, nullable=True)   # AdetFiltresi max (NULL = filtresiz)
+    olusturulma_tarihi = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    kayit = db.relationship('Kayit', backref=db.backref('ayrintilari', lazy=True, cascade='all, delete-orphan'))
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'kayit_id': self.kayit_id,
+            'urun_kodu': self.urun_kodu,
+            'beden': self.beden or '',
+            'adet': self.adet,
+            'min_adet_filtre': self.min_adet_filtre,
+            'max_adet_filtre': self.max_adet_filtre,
+            'aralik': (
+                f"{self.min_adet_filtre}-{self.max_adet_filtre}" if self.max_adet_filtre
+                else (f"{self.min_adet_filtre}+" if self.min_adet_filtre else 'Tümü')
+            ),
+        }
+
+
 # ============================================================================
 # VERİTABANI İŞLEMLERİ
 # ============================================================================
@@ -321,7 +387,8 @@ def veritabani_migrasyonu():
                         excel_yukleme_id INTEGER REFERENCES excel_uploads(id),
                         senkronize_edildi BOOLEAN NOT NULL DEFAULT 0,
                         senkronize_tarihi DATETIME,
-                        referans_kayit_id INTEGER
+                        referans_kayit_id INTEGER,
+                        grup_baslangic_satiri BOOLEAN NOT NULL DEFAULT 0
                     )
                 '''))
 
@@ -335,7 +402,8 @@ def veritabani_migrasyonu():
                         (id, siparis_no, tarih, urun_id, urun_kodu_ham, beden, adet,
                          toplama_id, personel_id, kargo_kodu, termin_tarihi,
                          durum, hata_sebebi, excel_yukleme_id,
-                         senkronize_edildi, senkronize_tarihi, referans_kayit_id)
+                         senkronize_edildi, senkronize_tarihi, referans_kayit_id,
+                         grup_baslangic_satiri)
                     SELECT id, siparis_no, tarih, urun_id, NULL, beden, adet,
                            toplama_id, personel_id, {kargo_expr}, {termin_expr},
                            CASE durum
@@ -345,7 +413,8 @@ def veritabani_migrasyonu():
                                ELSE COALESCE(durum, 'BEKLEMEDE')
                            END,
                            NULL, excel_yukleme_id,
-                           {senkronize_expr}, {referans_expr}
+                           {senkronize_expr}, {referans_expr},
+                           0
                     FROM orders
                 '''))
 
@@ -354,16 +423,55 @@ def veritabani_migrasyonu():
                 conn.execute(text('CREATE INDEX IF NOT EXISTS ix_order_siparis_no ON orders(siparis_no)'))
                 conn.execute(text('CREATE INDEX IF NOT EXISTS ix_order_tarih ON orders(tarih)'))
                 conn.execute(text('CREATE INDEX IF NOT EXISTS ix_order_toplama ON orders(toplama_id)'))
-            elif 'hata_sebebi' not in orders_cols:
-                conn.execute(text('ALTER TABLE orders ADD COLUMN hata_sebebi TEXT'))
+            else:
+                if 'hata_sebebi' not in orders_cols:
+                    conn.execute(text('ALTER TABLE orders ADD COLUMN hata_sebebi TEXT'))
+                if 'grup_baslangic_satiri' not in orders_cols:
+                    conn.execute(text('ALTER TABLE orders ADD COLUMN grup_baslangic_satiri BOOLEAN NOT NULL DEFAULT 0'))
 
-        # kayitlar tablosuna yeni sütunlar ekle
+        # kayitlar tablosuna yeni sütunlar ekle + personel_id nullable yap
         if 'kayitlar' in existing_tables:
             kayit_cols = [c['name'] for c in inspector.get_columns('kayitlar')]
             if 'senkronizasyon_sayisi' not in kayit_cols:
                 conn.execute(text('ALTER TABLE kayitlar ADD COLUMN senkronizasyon_sayisi INTEGER DEFAULT 0 NOT NULL'))
             if 'son_senkronizasyon' not in kayit_cols:
                 conn.execute(text('ALTER TABLE kayitlar ADD COLUMN son_senkronizasyon DATETIME'))
+            # Personel_id'yi nullable hale getir (SQLite'da tablo yeniden oluşturularak yapılır)
+            # Mevcut sütunun nullable olup olmadığını kontrol et
+            kayit_col_defs = {c['name']: c for c in inspector.get_columns('kayitlar')}
+            personel_col = kayit_col_defs.get('personel_id', {})
+            if personel_col.get('nullable') is False:
+                has_senk = 'senkronizasyon_sayisi' in kayit_cols
+                has_son = 'son_senkronizasyon' in kayit_cols
+                conn.execute(text('''
+                    CREATE TABLE kayitlar_new (
+                        id INTEGER NOT NULL PRIMARY KEY,
+                        tarih VARCHAR(10) NOT NULL,
+                        personel_id INTEGER REFERENCES personeller(id),
+                        toplama_id INTEGER NOT NULL REFERENCES toplamalar(id),
+                        trendyol_siparis FLOAT DEFAULT 0,
+                        trendyol_fatura FLOAT DEFAULT 0,
+                        diger_pazar FLOAT DEFAULT 0,
+                        not_alan TEXT DEFAULT '',
+                        eklenme_tarihi DATETIME,
+                        senkronizasyon_sayisi INTEGER NOT NULL DEFAULT 0,
+                        son_senkronizasyon DATETIME
+                    )
+                '''))
+                senk_col = 'senkronizasyon_sayisi' if has_senk else '0'
+                son_col = 'son_senkronizasyon' if has_son else 'NULL'
+                conn.execute(text(f'''
+                    INSERT INTO kayitlar_new
+                        (id, tarih, personel_id, toplama_id, trendyol_siparis,
+                         trendyol_fatura, diger_pazar, not_alan, eklenme_tarihi,
+                         senkronizasyon_sayisi, son_senkronizasyon)
+                    SELECT id, tarih, personel_id, toplama_id, trendyol_siparis,
+                           trendyol_fatura, diger_pazar, not_alan, eklenme_tarihi,
+                           {senk_col}, {son_col}
+                    FROM kayitlar
+                '''))
+                conn.execute(text('DROP TABLE kayitlar'))
+                conn.execute(text('ALTER TABLE kayitlar_new RENAME TO kayitlar'))
 
         # excel_uploads tablosuna yeni sütunlar ekle
         if 'excel_uploads' in existing_tables:
@@ -372,6 +480,37 @@ def veritabani_migrasyonu():
                 conn.execute(text("ALTER TABLE excel_uploads ADD COLUMN durum VARCHAR(50) DEFAULT 'YUKLENDI' NOT NULL"))
             if 'kontrol_tarihi' not in excel_cols:
                 conn.execute(text('ALTER TABLE excel_uploads ADD COLUMN kontrol_tarihi DATETIME'))
+
+        # Yeni tablolar: adet_filtreleri ve kayit_ayrintilari
+        if 'adet_filtreleri' not in existing_tables:
+            conn.execute(text('''
+                CREATE TABLE adet_filtreleri (
+                    id INTEGER NOT NULL PRIMARY KEY,
+                    toplama_id INTEGER NOT NULL REFERENCES toplamalar(id),
+                    urun_kodu VARCHAR(120) NOT NULL,
+                    beden VARCHAR(50),
+                    min_adet INTEGER NOT NULL,
+                    max_adet INTEGER,
+                    olusturulma_tarihi DATETIME
+                )
+            '''))
+            conn.execute(text('CREATE INDEX IF NOT EXISTS ix_adet_filtre_toplama ON adet_filtreleri(toplama_id)'))
+            conn.execute(text('CREATE INDEX IF NOT EXISTS ix_adet_filtre_urun ON adet_filtreleri(urun_kodu)'))
+
+        if 'kayit_ayrintilari' not in existing_tables:
+            conn.execute(text('''
+                CREATE TABLE kayit_ayrintilari (
+                    id INTEGER NOT NULL PRIMARY KEY,
+                    kayit_id INTEGER NOT NULL REFERENCES kayitlar(id),
+                    urun_kodu VARCHAR(120) NOT NULL,
+                    beden VARCHAR(50),
+                    adet INTEGER NOT NULL,
+                    min_adet_filtre INTEGER,
+                    max_adet_filtre INTEGER,
+                    olusturulma_tarihi DATETIME
+                )
+            '''))
+            conn.execute(text('CREATE INDEX IF NOT EXISTS ix_kayit_ayrinti_kayit ON kayit_ayrintilari(kayit_id)'))
 
         conn.commit()
     print("✓ Veritabanı migrasyonu tamamlandı")
@@ -429,7 +568,7 @@ def toplama_sil(id):
     return {'basarili': True, 'mesaj': 'Toplama silindi!'}
 
 
-def kayit_ekle(tarih, personel_id, toplama_id, trendyol_siparis=0,
+def kayit_ekle(tarih, toplama_id, personel_id=None, trendyol_siparis=0,
                trendyol_fatura=0, diger_pazar=0, not_alan=''):
     """Yeni kayıt ekle"""
 
@@ -449,7 +588,7 @@ def kayit_ekle(tarih, personel_id, toplama_id, trendyol_siparis=0,
     return {'basarili': True, 'mesaj': 'Kayıt başarıyla eklendi!', 'id': kayit.id}
 
 
-def kayit_guncelle(id, tarih, personel_id, toplama_id, trendyol_siparis=0,
+def kayit_guncelle(id, tarih, toplama_id, personel_id=None, trendyol_siparis=0,
                    trendyol_fatura=0, diger_pazar=0, not_alan=''):
     """Kayıt güncelle"""
 
@@ -471,13 +610,38 @@ def kayit_guncelle(id, tarih, personel_id, toplama_id, trendyol_siparis=0,
 
 
 def kayit_sil(id):
-    """Kayıt sil"""
+    """Kayıt sil — ilgili TAMAMLANDI siparişleri BEKLEMEDE'ye döndür"""
+    from datetime import datetime as _dt, time as _time
 
     kayit = Kayit.query.get(id)
     if not kayit:
         return {'basarili': False, 'mesaj': 'Kayıt bulunamadı!'}
 
+    # İlgili TAMAMLANDI siparişleri BEKLEMEDE'ye döndür
+    geri_donen = 0
+    try:
+        tarih_obj = _dt.strptime(kayit.tarih, '%d.%m.%Y').date()
+        tarih_start = _dt.combine(tarih_obj, _time.min)
+        tarih_end = _dt.combine(tarih_obj, _time.max)
+
+        siparisler = Order.query.filter(
+            Order.durum == 'TAMAMLANDI',
+            Order.toplama_id == kayit.toplama_id,
+            Order.tarih >= tarih_start,
+            Order.tarih <= tarih_end,
+        ).all()
+
+        for s in siparisler:
+            s.durum = 'BEKLEMEDE'
+            s.senkronize_edildi = False
+            s.senkronize_tarihi = None
+        geri_donen = len(siparisler)
+    except (ValueError, AttributeError):
+        pass
+
     db.session.delete(kayit)
     db.session.commit()
 
+    if geri_donen:
+        return {'basarili': True, 'mesaj': f'Kayıt silindi! {geri_donen} sipariş BEKLEMEDE durumuna döndürüldü.'}
     return {'basarili': True, 'mesaj': 'Kayıt silindi!'}

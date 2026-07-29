@@ -8,15 +8,14 @@ from flask import Blueprint, render_template, request, jsonify, send_file
 from openpyxl import Workbook
 from sqlalchemy import or_
 
-from database import db, Order, Personel, Product, Toplama, ExcelUpload
+from database import db, Order, Product, Toplama, ExcelUpload
 from routes.excel_handler import match_product_by_code, determine_toplama, parse_row_date
 from utils.excel_utils import build_template, load_excel_rows, calculate_file_hash
-from utils.validators import validate_headers
 from utils.audit_utils import log_audit
 
 siparisler_bp = Blueprint('siparisler', __name__, url_prefix='/siparisler')
 
-SIPARIS_HEADERS = ['Siparis No', 'Tarih', 'Urun Kodu', 'Beden', 'Adet', 'Toplama', 'Personel']
+SIPARIS_HEADERS = ['Siparis No', 'Tarih', 'Urun Kodu', 'Beden', 'Adet', 'Toplama']
 
 
 def _check_order(siparis_no, tarih, urun_id, urun_kodu_ham, beden, adet, toplama_id, product=None):
@@ -33,14 +32,40 @@ def _check_order(siparis_no, tarih, urun_id, urun_kodu_ham, beden, adet, toplama
             errors.append('Ürün Kodu boş')
     if product and product.beden_ayrimi and not beden:
         errors.append('Beden boş/tanımsız')
-    try:
-        adet_int = int(adet or 0)
-    except (ValueError, TypeError):
-        adet_int = 0
-    if adet_int <= 0:
-        errors.append('Adet ≤ 0')
     if not toplama_id:
         errors.append('Toplama seçilmemiş')
+    return errors
+
+
+def _revalidate_order(order):
+    """HATALI siparişi yeniden doğrula ve ürün/toplama eşlemesini güncelle."""
+    raw_code = str(order.urun_kodu_ham or '').strip()
+    product = None
+
+    if raw_code:
+        product = match_product_by_code(raw_code)
+        order.urun_id = product.id if product else None
+    elif order.urun_id:
+        product = Product.query.get(order.urun_id)
+
+    beden_error = None
+    if product:
+        toplama_id, beden_error = determine_toplama(product, order.beden)
+        if toplama_id:
+            order.toplama_id = toplama_id
+
+    errors = _check_order(
+        siparis_no=order.siparis_no,
+        tarih=order.tarih,
+        urun_id=order.urun_id,
+        urun_kodu_ham=order.urun_kodu_ham,
+        beden=order.beden,
+        adet=order.adet,
+        toplama_id=order.toplama_id,
+        product=product,
+    )
+    if beden_error and beden_error not in errors:
+        errors.append(beden_error)
     return errors
 
 
@@ -51,13 +76,11 @@ def index():
 
 @siparisler_bp.route('/api/meta')
 def api_meta():
-    """Dropdown verileri: toplamalar ve personeller"""
+    """Dropdown verileri: toplamalar"""
     toplamalar = Toplama.query.order_by(Toplama.ad).all()
-    personeller = Personel.query.order_by(Personel.ad).all()
     return jsonify({
         'basarili': True,
         'toplamalar': [{'id': t.id, 'ad': t.ad} for t in toplamalar],
-        'personeller': [{'id': p.id, 'ad': p.ad} for p in personeller],
     })
 
 
@@ -90,7 +113,9 @@ def excel_yukle():
     except Exception:
         return jsonify({'basarili': False, 'mesaj': 'Excel okunamadı. Dosya formatını kontrol edin.'}), 400
 
-    if not validate_headers(headers, SIPARIS_HEADERS):
+    # Zorunlu başlıkları kontrol et; fazladan sütunlar (örn. Personel) yoksayılır
+    actual_core = [str(h).strip() for h in headers[:len(SIPARIS_HEADERS)]]
+    if actual_core != SIPARIS_HEADERS:
         return jsonify({
             'basarili': False,
             'mesaj': 'Excel başlıkları/sırası hatalı!',
@@ -111,13 +136,14 @@ def excel_yukle():
     hatali = 0
     row_errors = []
     unique_orders = set()
+    seen_siparis_nos = set()  # grup_baslangic_satiri takibi
 
     for row_no, row in enumerate(rows, start=2):
         siparis_no = str(row.get('Siparis No', '') or '').strip()
         urun_kodu_raw = str(row.get('Urun Kodu', '') or '').strip()
         beden = str(row.get('Beden', '') or '').strip() or None
         toplama_raw = str(row.get('Toplama', '') or '').strip() or None
-        personel_raw = str(row.get('Personel', '') or '').strip() or None
+        # Personel sütunu siparişlerde kullanılmıyor — yoksay
 
         try:
             adet = int(float(row.get('Adet') or 0))
@@ -163,12 +189,6 @@ def excel_yukle():
         if not tarih:
             errors.append('Tarih boş')
 
-        personel_id = None
-        if personel_raw:
-            p = Personel.query.filter_by(ad=personel_raw).first()
-            if p:
-                personel_id = p.id
-
         if errors:
             durum = 'HATALI'
             hata_sebebi = '; '.join(errors)
@@ -211,13 +231,15 @@ def excel_yukle():
             beden=beden,
             adet=adet,
             toplama_id=toplama_id,
-            personel_id=personel_id,
+            personel_id=None,
             durum=durum,
             hata_sebebi=hata_sebebi,
             excel_yukleme_id=upload.id,
+            grup_baslangic_satiri=(siparis_no not in seen_siparis_nos),
         )
         db.session.add(order)
         if siparis_no:
+            seen_siparis_nos.add(siparis_no)
             unique_orders.add(siparis_no)
 
     upload.basarili = basarili
@@ -250,7 +272,6 @@ def api_list():
     tarih_baslangic = request.args.get('tarih_baslangic', '').strip()
     tarih_bitis = request.args.get('tarih_bitis', '').strip()
     f_toplama_id = request.args.get('toplama_id', '').strip()
-    f_personel_id = request.args.get('personel_id', '').strip()
     f_durum = request.args.get('durum', '').strip()
 
     query = Order.query
@@ -282,9 +303,6 @@ def api_list():
     if f_toplama_id:
         query = query.filter(Order.toplama_id == int(f_toplama_id))
 
-    if f_personel_id:
-        query = query.filter(Order.personel_id == int(f_personel_id))
-
     if f_durum:
         query = query.filter(Order.durum == f_durum)
 
@@ -301,11 +319,10 @@ def api_list():
             'adet': item.adet,
             'toplama': item.toplama.ad if item.toplama else '',
             'toplama_id': item.toplama_id,
-            'personel': item.personel.ad if item.personel else '',
-            'personel_id': item.personel_id,
             'durum': item.durum or 'BEKLEMEDE',
             'hata_sebebi': item.hata_sebebi or '',
             'senkronize_edildi': item.senkronize_edildi,
+            'grup_baslangic_satiri': item.grup_baslangic_satiri,
         })
 
     return jsonify({'basarili': True, 'kayitlar': rows, 'toplam': pagination.total})
@@ -324,7 +341,6 @@ def api_get(order_id):
             'beden': order.beden or '',
             'adet': order.adet,
             'toplama_id': order.toplama_id,
-            'personel_id': order.personel_id,
             'durum': order.durum or 'BEKLEMEDE',
             'hata_sebebi': order.hata_sebebi or '',
         },
@@ -341,17 +357,8 @@ def api_guncelle(order_id):
     if 'beden' in data:
         order.beden = str(data['beden'] or '').strip() or None
 
-    if 'adet' in data:
-        try:
-            order.adet = int(float(data['adet'] or 0))
-        except (ValueError, TypeError):
-            order.adet = 0
-
     if 'toplama_id' in data and data['toplama_id']:
         order.toplama_id = int(data['toplama_id'])
-
-    if 'personel_id' in data:
-        order.personel_id = int(data['personel_id']) if data['personel_id'] else None
 
     if 'tarih' in data and data['tarih']:
         try:
@@ -427,14 +434,105 @@ def api_toplu_guncelle():
     guncellenen = 0
     orders = Order.query.filter(Order.id.in_(ids)).all()
     for order in orders:
-        if 'personel_id' in data:
-            order.personel_id = int(data['personel_id']) if data['personel_id'] else None
         if 'toplama_id' in data and data['toplama_id']:
             order.toplama_id = int(data['toplama_id'])
         guncellenen += 1
 
     db.session.commit()
     return jsonify({'basarili': True, 'mesaj': f'{guncellenen} sipariş güncellendi'})
+
+
+@siparisler_bp.route('/api/grup-sil', methods=['POST'])
+def api_grup_sil():
+    """Aynı sipariş no'suna sahip tüm siparişleri sil"""
+    data = request.json or {}
+    siparis_no = str(data.get('siparis_no', '')).strip()
+    if not siparis_no:
+        return jsonify({'basarili': False, 'mesaj': 'Sipariş No gerekli'})
+    silinen = Order.query.filter(Order.siparis_no == siparis_no).delete(synchronize_session=False)
+    db.session.commit()
+    log_audit('grup_sil', 'orders', None, yeni_deger={'siparis_no': siparis_no, 'silinen': silinen})
+    return jsonify({'basarili': True, 'mesaj': f'{silinen} sipariş silindi'})
+
+
+@siparisler_bp.route('/api/grup-revalidate', methods=['POST'])
+def api_grup_revalidate():
+    """Aynı sipariş no'suna sahip HATALI siparişleri yeniden doğrula"""
+    data = request.json or {}
+    siparis_no = str(data.get('siparis_no', '')).strip()
+    if not siparis_no:
+        return jsonify({'basarili': False, 'mesaj': 'Sipariş No gerekli'})
+
+    orders = Order.query.filter(
+        Order.siparis_no == siparis_no,
+        Order.durum == 'HATALI',
+    ).all()
+
+    if not orders:
+        return jsonify({'basarili': False, 'mesaj': 'Bu grupta HATALI sipariş bulunamadı'})
+
+    duzeltilen = 0
+    hatali_kalan = 0
+    for order in orders:
+        errors = _revalidate_order(order)
+        if errors:
+            order.hata_sebebi = '; '.join(errors)
+            hatali_kalan += 1
+        else:
+            order.durum = 'BEKLEMEDE'
+            order.hata_sebebi = None
+            duzeltilen += 1
+
+    db.session.commit()
+    log_audit('grup_revalidate', 'orders', None,
+              yeni_deger={'siparis_no': siparis_no, 'duzeltilen': duzeltilen, 'hatali_kalan': hatali_kalan})
+
+    if duzeltilen:
+        mesaj = f'{duzeltilen} sipariş BEKLEMEDE oldu' + (f', {hatali_kalan} hata devam ediyor' if hatali_kalan else '')
+    else:
+        mesaj = f'Hatalar devam ediyor ({hatali_kalan} sipariş)'
+    return jsonify({'basarili': True, 'duzeltilen': duzeltilen, 'hatali_kalan': hatali_kalan, 'mesaj': mesaj})
+
+
+@siparisler_bp.route('/guncelle-hatali', methods=['POST'])
+def guncelle_hatali_siparisler_route():
+    """Tüm HATALI siparişleri yeniden doğrula."""
+    hatali_siparisler = Order.query.filter_by(durum='HATALI').all()
+
+    if not hatali_siparisler:
+        return jsonify({
+            'status': 'success',
+            'basarili': True,
+            'message': 'HATALI sipariş yok',
+            'duzeltilen': 0,
+            'hala_hatali': 0,
+        })
+
+    duzeltilen = 0
+    hala_hatali = 0
+
+    for siparis in hatali_siparisler:
+        errors = _revalidate_order(siparis)
+        if errors:
+            siparis.durum = 'HATALI'
+            siparis.hata_sebebi = '; '.join(errors)
+            hala_hatali += 1
+        else:
+            siparis.durum = 'BEKLEMEDE'
+            siparis.hata_sebebi = None
+            duzeltilen += 1
+
+    db.session.commit()
+    log_audit('hatali_toplu_revalidate', 'orders', None,
+              yeni_deger={'duzeltilen': duzeltilen, 'hatali_kalan': hala_hatali})
+
+    return jsonify({
+        'status': 'success',
+        'basarili': True,
+        'message': f"{duzeltilen} sipariş BEKLEMEDE'ye geçti. {hala_hatali} sipariş hâlâ HATALI",
+        'duzeltilen': duzeltilen,
+        'hala_hatali': hala_hatali,
+    })
 
 
 @siparisler_bp.route('/api/gecmis')
@@ -540,7 +638,6 @@ def api_excel_indir():
     tarih_baslangic = request.args.get('tarih_baslangic', '').strip()
     tarih_bitis = request.args.get('tarih_bitis', '').strip()
     f_toplama_id = request.args.get('toplama_id', '').strip()
-    f_personel_id = request.args.get('personel_id', '').strip()
     f_durum = request.args.get('durum', '').strip()
 
     query = Order.query
@@ -565,8 +662,6 @@ def api_excel_indir():
             pass
     if f_toplama_id:
         query = query.filter(Order.toplama_id == int(f_toplama_id))
-    if f_personel_id:
-        query = query.filter(Order.personel_id == int(f_personel_id))
     if f_durum:
         query = query.filter(Order.durum == f_durum)
 
@@ -575,7 +670,7 @@ def api_excel_indir():
     wb = Workbook()
     ws = wb.active
     ws.title = 'Siparişler'
-    ws.append(['Sipariş No', 'Tarih', 'Ürün Kodu', 'Beden', 'Adet', 'Toplama', 'Personel', 'Durum'])
+    ws.append(['Sipariş No', 'Tarih', 'Ürün Kodu', 'Beden', 'Adet', 'Toplama', 'Durum'])
     for o in orders:
         ws.append([
             o.siparis_no or '',
@@ -584,7 +679,6 @@ def api_excel_indir():
             o.beden or '',
             o.adet or 0,
             o.toplama.ad if o.toplama else '',
-            o.personel.ad if o.personel else '',
             o.durum or '',
         ])
 
@@ -597,4 +691,3 @@ def api_excel_indir():
         download_name=f'siparisler_{tarih_str}.xlsx',
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     )
-

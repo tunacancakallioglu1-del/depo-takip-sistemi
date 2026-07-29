@@ -26,7 +26,7 @@
       <div class="col-md-4">
         <div class="alert alert-info py-1 px-2 small mb-0">
           ℹ Sadece seçili tarihteki BEKLEMEDE siparişleri Kayıtlara aktarır.
-          Kayıt oluşmadan hiçbir sipariş TAMAMLANDI yapılmaz.
+          Adet detaylarını kayda yazar; kayıt oluşmadan hiçbir sipariş TAMAMLANDI yapılmaz.
         </div>
       </div>
       <div class="col-md-4">
@@ -92,7 +92,7 @@
           {% for kayit in kayitlar %}
           <tr>
             <td>{{ kayit.tarih }}</td>
-            <td>{{ kayit.personel.ad }}</td>
+            <td>{{ kayit.personel.ad if kayit.personel else '—' }}</td>
             <td>{{ kayit.toplama.ad }}</td>
             <td>{{ kayit.trendyol_siparis }}</td>
             <td>{{ kayit.trendyol_fatura }}</td>
@@ -137,9 +137,9 @@
               <input type="date" class="form-control" id="eTarih" required>
             </div>
             <div class="col-md-6">
-              <label class="form-label">Personel *</label>
-              <select class="form-select" id="ePersonel" required>
-                <option value="">Seçin...</option>
+              <label class="form-label">Personel <span class="text-muted small">(isteğe bağlı)</span></label>
+              <select class="form-select" id="ePersonel">
+                <option value="">— Personel Seç —</option>
                 {% for p in personeller %}<option value="{{ p.id }}">{{ p.ad }}</option>{% endfor %}
               </select>
             </div>
@@ -193,8 +193,9 @@
             <input type="date" class="form-control" id="dTarih" required>
           </div>
           <div class="col-md-6">
-            <label class="form-label">Personel *</label>
-            <select class="form-select" id="dPersonel" required>
+            <label class="form-label">Personel <span class="text-muted small">(isteğe bağlı)</span></label>
+            <select class="form-select" id="dPersonel">
+              <option value="">— Personel Seç —</option>
               {% for p in personeller %}<option value="{{ p.id }}">{{ p.ad }}</option>{% endfor %}
             </select>
           </div>
@@ -302,8 +303,8 @@ async function kayitEkle() {
   const tarih = document.getElementById('eTarih').value;
   const personelId = document.getElementById('ePersonel').value;
   const toplamId = document.getElementById('eToplama').value;
-  if (!tarih || !personelId || !toplamId) {
-    showAlert('warning', 'Tarih, personel ve toplama zorunludur!'); return;
+  if (!tarih || !toplamId) {
+    showAlert('warning', 'Tarih ve toplama zorunludur!'); return;
   }
   setLoading(true);
   const { ok, data } = await apiFetch('/api/kayit-ekle', {

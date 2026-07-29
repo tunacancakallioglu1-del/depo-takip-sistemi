@@ -11,9 +11,13 @@
 .durum-tamamlandi{ background:#E8F5E9; color:#2E7D32; border:1px solid #C8E6C9; }
 .badge-durum { padding:4px 10px; border-radius:20px; font-size:.78rem; font-weight:600; cursor:default; white-space:nowrap; }
 
-/* ── Satır renklendirme ───────────────────────────────────────── */
-tr.row-hatali    td { background:#FFF5F5 !important; }
-tr.row-tamamlandi td { background:#F5FFF6 !important; }
+/* ── Grup Satırları ───────────────────────────────────────────── */
+.grup-baslik td { background:#f0f4f8 !important; }
+.grup-baslik:hover td { background:#e4ecf5 !important; }
+.grup-detail td { background:#fafbfc !important; }
+.grup-detail.row-hatali td { background:#FFF5F5 !important; }
+.grup-detail.row-tamamlandi td { background:#F5FFF6 !important; }
+.expand-icon { font-style:normal; font-size:.85rem; }
 
 /* ── Toplu Seçim Çubuğu ──────────────────────────────────────── */
 #bulkBar { transition:all .2s; }
@@ -95,12 +99,6 @@ tr.row-tamamlandi td { background:#F5FFF6 !important; }
         </select>
       </div>
       <div class="col-6 col-md-2">
-        <label class="form-label small mb-1">Personel</label>
-        <select class="form-select form-select-sm" id="fPersonel">
-          <option value="">Tümü</option>
-        </select>
-      </div>
-      <div class="col-6 col-md-2">
         <label class="form-label small mb-1">Durum</label>
         <select class="form-select form-select-sm" id="fDurum">
           <option value="">Tümü</option>
@@ -138,21 +136,19 @@ tr.row-tamamlandi td { background:#F5FFF6 !important; }
         <thead class="table-light">
           <tr>
             <th style="width:36px">
-              <input type="checkbox" id="checkAll" class="form-check-input" onclick="toggleAll(this)">
+              <input type="checkbox" id="checkAll" class="form-check-input" onclick="toggleAll(this)" title="Görünür satırları seç">
             </th>
             <th>Sipariş No</th>
             <th>Tarih</th>
             <th>Ürün Kodu</th>
             <th>Beden</th>
-            <th>Adet</th>
             <th>Toplama</th>
-            <th>Personel</th>
-            <th>Durum</th>
-            <th style="width:90px">İşlem</th>
+            <th>Durum / Hata</th>
+            <th style="width:130px">İşlem</th>
           </tr>
         </thead>
         <tbody id="ordersBody">
-          <tr><td colspan="10" class="text-center py-4 text-muted">Yükleniyor...</td></tr>
+          <tr><td colspan="8" class="text-center py-4 text-muted">Yükleniyor...</td></tr>
         </tbody>
       </table>
     </div>
@@ -198,7 +194,7 @@ tr.row-tamamlandi td { background:#F5FFF6 !important; }
       <div class="modal-body">
         <div class="alert alert-info small mb-2">
           <strong>Sütunlar (sırasıyla):</strong>
-          Siparis No | Tarih | Urun Kodu | Beden | Adet | Toplama | Personel
+          Siparis No | Tarih | Urun Kodu | Beden | Adet | Toplama
         </div>
         <div class="alert alert-warning small mb-2">
           ⚠ Hatalı satırlar <strong>HATALI</strong> olarak kaydedilir, işlem durdurulamaz.<br>
@@ -243,21 +239,13 @@ tr.row-tamamlandi td { background:#F5FFF6 !important; }
             <label class="form-label small">Ürün Kodu</label>
             <input type="text" class="form-control form-control-sm" id="sipDuzenleUrunKodu" placeholder="TER0101">
           </div>
-          <div class="col-md-4">
+          <div class="col-md-6">
             <label class="form-label small">Beden</label>
             <input type="text" class="form-control form-control-sm" id="sipDuzenleBeden" placeholder="S,M,L,XL…">
           </div>
-          <div class="col-md-4">
-            <label class="form-label small">Adet</label>
-            <input type="number" class="form-control form-control-sm" id="sipDuzenleAdet" min="1">
-          </div>
-          <div class="col-md-4">
+          <div class="col-md-6">
             <label class="form-label small">Toplama</label>
             <select class="form-select form-select-sm" id="sipDuzenleToplama"></select>
-          </div>
-          <div class="col-12">
-            <label class="form-label small">Personel <span class="text-muted">(isteğe bağlı)</span></label>
-            <select class="form-select form-select-sm" id="sipDuzenlePersonel"></select>
           </div>
         </div>
         <div id="sipDuzenleHata" class="alert alert-danger mt-3 d-none small"></div>
@@ -279,13 +267,7 @@ tr.row-tamamlandi td { background:#F5FFF6 !important; }
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
-        <p class="text-muted small">Seçili siparişlerin Personel veya Toplama alanını değiştirin. Boş bırakılan alanlar değiştirilmez.</p>
-        <div class="mb-3">
-          <label class="form-label small">Personel</label>
-          <select class="form-select form-select-sm" id="topluPersonel">
-            <option value="">Değiştirme</option>
-          </select>
-        </div>
+        <p class="text-muted small">Seçili siparişlerin Toplama alanını değiştirin.</p>
         <div class="mb-3">
           <label class="form-label small">Toplama</label>
           <select class="form-select form-select-sm" id="topluToplama">
@@ -308,9 +290,9 @@ initUploadZone('sipUploadZone', 'sipExcelFile');
 
 let currentPage = 1;
 let selectedIds = new Set();
-let metaData = { toplamalar: [], personeller: [] };
+let metaData = { toplamalar: [] };
 
-// ── Meta Yükle (Toplamalar / Personeller) ─────────────────────
+// ── Meta Yükle (Toplamalar) ─────────────────────────────────────
 async function loadMeta() {
   const { data } = await apiFetch('/siparisler/api/meta');
   if (!data.basarili) return;
@@ -318,26 +300,16 @@ async function loadMeta() {
 
   // Filter dropdowns
   const fT = document.getElementById('fToplama');
-  const fP = document.getElementById('fPersonel');
   data.toplamalar.forEach(t => fT.add(new Option(t.ad, t.id)));
-  data.personeller.forEach(p => fP.add(new Option(p.ad, p.id)));
 
   // Edit modal dropdowns
   const dt = document.getElementById('sipDuzenleToplama');
-  const dp = document.getElementById('sipDuzenlePersonel');
   const tt = document.getElementById('topluToplama');
-  const tp = document.getElementById('topluPersonel');
   dt.innerHTML = '<option value="">— Seç —</option>';
-  dp.innerHTML = '<option value="">— Personel yok —</option>';
   tt.innerHTML = '<option value="">Değiştirme</option>';
-  tp.innerHTML = '<option value="">Değiştirme</option>';
   data.toplamalar.forEach(t => {
     dt.add(new Option(t.ad, t.id));
     tt.add(new Option(t.ad, t.id));
-  });
-  data.personeller.forEach(p => {
-    dp.add(new Option(p.ad, p.id));
-    tp.add(new Option(p.ad, p.id));
   });
 }
 
@@ -362,13 +334,12 @@ function buildFilterParams() {
   if (v('fSiparisNo')) p.set('siparis_no', v('fSiparisNo'));
   if (v('fUrunKodu'))  p.set('urun_kodu', v('fUrunKodu'));
   if (v('fToplama'))   p.set('toplama_id', v('fToplama'));
-  if (v('fPersonel'))  p.set('personel_id', v('fPersonel'));
   if (v('fDurum'))     p.set('durum', v('fDurum'));
   return p;
 }
 
 function clearFilters() {
-  ['fTarihBasla','fTarihBitis','fSiparisNo','fUrunKodu','fToplama','fPersonel','fDurum'].forEach(id => {
+  ['fTarihBasla','fTarihBitis','fSiparisNo','fUrunKodu','fToplama','fDurum'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
@@ -391,52 +362,143 @@ function escHtml(s) {
   return String(s || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
 }
 
-// ── Siparişleri Yükle ─────────────────────────────────────────
+// ── Siparişleri Yükle (Sipariş No gruplamasıyla) ──────────────
 async function loadOrders(page = 1) {
   currentPage = page;
   const params = buildFilterParams();
   params.set('page', page);
-  params.set('per_page', 20);
+  params.set('per_page', 50);
 
   const { ok, data } = await apiFetch(`/siparisler/api/list?${params}`);
   if (!ok) return;
 
   const tbody = document.getElementById('ordersBody');
-  document.getElementById('totalCount').textContent = `Toplam: ${data.toplam} kayıt`;
+  document.getElementById('totalCount').textContent = `Toplam: ${data.toplam} satır`;
 
   if (!data.kayitlar.length) {
-    tbody.innerHTML = '<tr><td colspan="10" class="text-center py-4 text-muted">Kayıt bulunamadı</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" class="text-center py-4 text-muted">Kayıt bulunamadı</td></tr>';
     document.getElementById('ordersPagination').innerHTML = '';
     return;
   }
 
-  tbody.innerHTML = data.kayitlar.map(row => {
-    const rowCls = row.durum === 'HATALI' ? 'row-hatali' : (row.durum === 'TAMAMLANDI' ? 'row-tamamlandi' : '');
-    const checked = selectedIds.has(row.id) ? 'checked' : '';
-    return `
-    <tr class="${rowCls}" data-id="${row.id}">
-      <td><input type="checkbox" class="form-check-input row-check" value="${row.id}" ${checked} onchange="onRowCheck(this)"></td>
-      <td><strong>${escHtml(row.siparis_no)}</strong></td>
-      <td class="small">${formatDate(row.tarih)}</td>
-      <td><span class="badge bg-primary-soft text-primary small">${escHtml(row.urun_kodu || '-')}</span></td>
-      <td class="small">${escHtml(row.beden || '-')}</td>
-      <td>${row.adet}</td>
-      <td class="small">${escHtml(row.toplama || '-')}</td>
-      <td class="small">${escHtml(row.personel || '-')}</td>
-      <td>${durumBadge(row.durum, row.hata_sebebi)}</td>
+  // Sipariş No'ya göre grupla (ekleme sırası korunur)
+  const grupMap = new Map();
+  data.kayitlar.forEach(row => {
+    if (!grupMap.has(row.siparis_no)) grupMap.set(row.siparis_no, []);
+    grupMap.get(row.siparis_no).push(row);
+  });
+
+  let html = '';
+  let grupIdx = 0;
+
+  grupMap.forEach((rows, siparis_no) => {
+    const grup_durumu = getGrupDurumu(rows);
+    const hata_sebebi = getGrupHataSebebi(rows);
+    const tarih = rows[0].tarih;
+    const toplama = rows[0].toplama;
+    const idx = grupIdx++;
+    // Güvenli JS string için escape
+    const sipNo_js = siparis_no.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+
+    // Grup başlık satırı
+    html += `
+    <tr class="grup-baslik fw-semibold" style="cursor:pointer;" onclick="toggleGrup(${idx})">
+      <td style="width:28px;text-align:center"><span class="expand-icon" id="grup-icon-${idx}">▶</span></td>
+      <td>${escHtml(siparis_no)} <span class="badge bg-secondary ms-1 fw-normal" style="font-size:.7rem">${rows.length} ürün</span></td>
+      <td class="small">${formatDate(tarih)}</td>
+      <td class="text-muted small">—</td>
+      <td class="text-muted small">—</td>
+      <td class="small fw-normal">${escHtml(toplama || '—')}</td>
       <td>
-        <button class="btn btn-xs btn-warning" onclick="openSipDuzenle(${row.id})" title="Düzenle">✏️</button>
-        <button class="btn btn-xs btn-danger" onclick="sipSil(${row.id})" title="Sil">🗑️</button>
+        ${durumBadge(grup_durumu, hata_sebebi)}
+        ${hata_sebebi ? `<div class="small text-danger mt-1" style="max-width:180px;white-space:normal">${escHtml(hata_sebebi)}</div>` : ''}
+      </td>
+      <td onclick="event.stopPropagation()" style="white-space:nowrap">
+        ${grup_durumu === 'HATALI'
+          ? `<button class="btn btn-xs btn-success me-1" onclick="grupRevalidate('${sipNo_js}')" title="Yeniden Doğrula">🔄 Güncelle</button>`
+          : ''}
+        <button class="btn btn-xs btn-danger" onclick="grupSil('${sipNo_js}')" title="Tümünü Sil">🗑️ Sil</button>
       </td>
     </tr>`;
-  }).join('');
 
-  // Bootstrap tooltips
+    // Alt ürün satırları (varsayılan: gizli)
+    rows.forEach(row => {
+      const rowCls = row.durum === 'HATALI' ? 'row-hatali' : (row.durum === 'TAMAMLANDI' ? 'row-tamamlandi' : '');
+      const checked = selectedIds.has(row.id) ? 'checked' : '';
+      html += `
+      <tr class="grup-detail ${rowCls}" data-grup-idx="${idx}" data-id="${row.id}" style="display:none;">
+        <td><input type="checkbox" class="form-check-input row-check" value="${row.id}" ${checked} onchange="onRowCheck(this)"></td>
+        <td class="text-muted ps-3 small">↳</td>
+        <td></td>
+        <td><span class="badge bg-primary-soft text-primary small">${escHtml(row.urun_kodu || '-')}</span></td>
+        <td class="small">${escHtml(row.beden || '-')}</td>
+        <td class="small">${escHtml(row.toplama || '-')}</td>
+        <td>
+          ${row.hata_sebebi
+            ? `<small class="text-danger">${escHtml(row.hata_sebebi)}</small>`
+            : durumBadge(row.durum, '')}
+        </td>
+        <td style="white-space:nowrap">
+          <button class="btn btn-xs btn-warning" onclick="openSipDuzenle(${row.id})" title="Düzenle">✏️</button>
+          <button class="btn btn-xs btn-danger" onclick="sipSil(${row.id})" title="Sil">🗑️</button>
+        </td>
+      </tr>`;
+    });
+  });
+
+  tbody.innerHTML = html;
   tbody.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => new bootstrap.Tooltip(el));
 
-  const totalPages = Math.ceil(data.toplam / 20);
+  const totalPages = Math.ceil(data.toplam / 50);
   renderPagination('ordersPagination', page, totalPages, loadOrders);
   updateBulkBar();
+}
+
+// ── Grup Yardımcı Fonksiyonlar ────────────────────────────────
+function getGrupDurumu(rows) {
+  const durumlar = rows.map(r => r.durum);
+  if (durumlar.includes('HATALI')) return 'HATALI';
+  if (durumlar.includes('BEKLEMEDE')) return 'BEKLEMEDE';
+  return 'TAMAMLANDI';
+}
+
+function getGrupHataSebebi(rows) {
+  const hatali = rows.find(r => r.durum === 'HATALI');
+  return hatali ? (hatali.hata_sebebi || '') : '';
+}
+
+function toggleGrup(idx) {
+  const rows = document.querySelectorAll(`tr.grup-detail[data-grup-idx="${idx}"]`);
+  const icon = document.getElementById(`grup-icon-${idx}`);
+  const isHidden = rows.length > 0 && rows[0].style.display === 'none';
+  rows.forEach(r => r.style.display = isHidden ? 'table-row' : 'none');
+  if (icon) icon.textContent = isHidden ? '▼' : '▶';
+}
+
+async function grupSil(siparis_no) {
+  confirmAction(`"${siparis_no}" grubundaki tüm siparişler silinecek. Emin misiniz?`, async () => {
+    setLoading(true);
+    const { data } = await apiFetch('/siparisler/api/grup-sil', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ siparis_no }),
+    });
+    setLoading(false);
+    if (data.basarili) { showAlert('success', '✓ ' + data.mesaj); loadOrders(currentPage); loadStats(); }
+    else showAlert('danger', '✗ ' + data.mesaj);
+  });
+}
+
+async function grupRevalidate(siparis_no) {
+  setLoading(true);
+  const { data } = await apiFetch('/siparisler/api/grup-revalidate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ siparis_no }),
+  });
+  setLoading(false);
+  if (data.basarili) { showAlert(data.duzeltilen > 0 ? 'success' : 'warning', '✓ ' + data.mesaj); loadOrders(currentPage); loadStats(); }
+  else showAlert('danger', '✗ ' + data.mesaj);
 }
 
 // ── Checkbox Seçim ────────────────────────────────────────────
@@ -448,9 +510,12 @@ function onRowCheck(cb) {
 
 function toggleAll(masterCb) {
   document.querySelectorAll('.row-check').forEach(cb => {
-    cb.checked = masterCb.checked;
-    const id = parseInt(cb.value);
-    if (masterCb.checked) selectedIds.add(id); else selectedIds.delete(id);
+    const row = cb.closest('tr');
+    if (row && row.style.display !== 'none') {
+      cb.checked = masterCb.checked;
+      const id = parseInt(cb.value);
+      if (masterCb.checked) selectedIds.add(id); else selectedIds.delete(id);
+    }
   });
   updateBulkBar();
 }
@@ -526,9 +591,7 @@ async function openSipDuzenle(id) {
   document.getElementById('sipDuzenleTarih').value = s.tarih || '';
   document.getElementById('sipDuzenleUrunKodu').value = s.urun_kodu || '';
   document.getElementById('sipDuzenleBeden').value = s.beden || '';
-  document.getElementById('sipDuzenleAdet').value = s.adet;
   document.getElementById('sipDuzenleToplama').value = s.toplama_id || '';
-  document.getElementById('sipDuzenlePersonel').value = s.personel_id || '';
   document.getElementById('sipDuzenleHata').classList.add('d-none');
   new bootstrap.Modal(document.getElementById('sipDuzenleModal')).show();
 }
@@ -539,9 +602,7 @@ async function sipGuncelle() {
     tarih: document.getElementById('sipDuzenleTarih').value,
     urun_kodu: document.getElementById('sipDuzenleUrunKodu').value,
     beden: document.getElementById('sipDuzenleBeden').value,
-    adet: document.getElementById('sipDuzenleAdet').value,
     toplama_id: document.getElementById('sipDuzenleToplama').value,
-    personel_id: document.getElementById('sipDuzenlePersonel').value || null,
   };
   setLoading(true);
   const { data } = await apiFetch(`/siparisler/api/${id}`, {
@@ -593,12 +654,10 @@ async function topluSil() {
 }
 
 async function topluGuncelle() {
-  const personel_id = document.getElementById('topluPersonel').value;
   const toplama_id = document.getElementById('topluToplama').value;
-  if (!personel_id && !toplama_id) { showAlert('warning', 'En az bir alan seçin'); return; }
+  if (!toplama_id) { showAlert('warning', 'Toplama seçin'); return; }
 
   const payload = { ids: [...selectedIds] };
-  if (personel_id) payload.personel_id = personel_id;
   if (toplama_id)  payload.toplama_id  = toplama_id;
 
   setLoading(true);
