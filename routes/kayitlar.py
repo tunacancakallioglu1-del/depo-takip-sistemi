@@ -211,50 +211,60 @@ def excel_yukle():
 def senkronize_et():
     """Seçili tarihin siparişlerini kayıtlara senkronize et.
 
-    BEKLEMEDE ve TAMAMLANDI olan siparişleri personel+toplama bazında gruplar
-    ve kayıtlara Trendyol Sipariş sayısı olarak GÜNCELLER (üzerine yazar).
-    BEKLEMEDE siparişleri TAMAMLANDI olarak işaretler.
+    Sadece seçili tarihteki BEKLEMEDE siparişleri personel+toplama bazında gruplar
+    ve kayıtlara Trendyol Sipariş adedi olarak ekler.
+    Sadece başarıyla kayda alınan siparişleri TAMAMLANDI olarak işaretler.
     """
     try:
-        from sqlalchemy import func as sqlfunc
         veri = request.get_json() or {}
-        tarih_str = veri.get('tarih')
+        tarih_str = str(veri.get('tarih') or '').strip()
+        if not tarih_str:
+            return jsonify({'basarili': False, 'mesaj': 'Lütfen senkronize edilecek tarihi seçin!'}), 400
 
-        if tarih_str:
+        try:
             tarih_obj = datetime.strptime(tarih_str, '%Y-%m-%d').date()
-        else:
-            tarih_obj = datetime.utcnow().date()
+        except ValueError:
+            return jsonify({'basarili': False, 'mesaj': 'Geçersiz tarih formatı!'}), 400
 
         tarih_db = tarih_obj.strftime('%d.%m.%Y')
+        gun_baslangici = datetime.combine(tarih_obj, datetime.min.time())
+        gun_bitis = datetime.combine(tarih_obj, datetime.max.time())
 
-        # Seçili tarihin BEKLEMEDE ve TAMAMLANDI siparişlerini al
-        query = Order.query.filter(
-            Order.durum.in_(['BEKLEMEDE', 'TAMAMLANDI']),
-            sqlfunc.date(Order.tarih) == tarih_obj.strftime('%Y-%m-%d'),
+        siparisler = Order.query.filter(
+            Order.durum == 'BEKLEMEDE',
+            Order.tarih >= gun_baslangici,
+            Order.tarih <= gun_bitis,
         )
-        siparisler = query.all()
+        siparisler = siparisler.all()
 
         if not siparisler:
             return jsonify({
-                'basarili': True,
-                'mesaj': f'{tarih_db} tarihinde senkronize edilecek sipariş bulunamadı.',
-                'yeni': 0,
-                'guncellendi': 0,
+                'basarili': False,
+                'mesaj': f'{tarih_db} tarihi için BEKLEMEDE sipariş bulunamadı.',
+                'eklenen_sayi': 0,
             })
 
-        # Personel+Toplama bazında sayıları topla (personel_id olan siparişler için)
+        eksik_alanlar = []
+        for s in siparisler:
+            if not s.personel_id or not s.toplama_id:
+                eksik_alanlar.append(s.siparis_no)
+
+        if eksik_alanlar:
+            return jsonify({
+                'basarili': False,
+                'mesaj': 'Personel veya toplama eksik siparişler var. Önce siparişleri düzeltin.',
+                'siparisler': eksik_alanlar[:10],
+            }), 400
+
         gruplar = {}
         for s in siparisler:
-            if not s.personel_id:
-                continue
             key = (s.personel_id, s.toplama_id)
-            gruplar[key] = gruplar.get(key, 0) + 1
+            gruplar[key] = gruplar.get(key, 0) + int(s.adet or 0)
 
-        yeni = 0
-        guncellendi = 0
         now = datetime.now()
+        eklenen_sayi = 0
 
-        for (personel_id, toplama_id), siparis_sayisi in gruplar.items():
+        for (personel_id, toplama_id), siparis_adedi in gruplar.items():
             kayit = Kayit.query.filter_by(
                 tarih=tarih_db,
                 personel_id=personel_id,
@@ -262,17 +272,15 @@ def senkronize_et():
             ).first()
 
             if kayit:
-                # Üzerine yaz (re-sync desteği)
-                kayit.trendyol_siparis = siparis_sayisi
+                kayit.trendyol_siparis = (kayit.trendyol_siparis or 0) + siparis_adedi
                 kayit.senkronizasyon_sayisi = (kayit.senkronizasyon_sayisi or 0) + 1
                 kayit.son_senkronizasyon = now
-                guncellendi += 1
             else:
                 kayit = Kayit(
                     tarih=tarih_db,
                     personel_id=personel_id,
                     toplama_id=toplama_id,
-                    trendyol_siparis=siparis_sayisi,
+                    trendyol_siparis=siparis_adedi,
                     trendyol_fatura=0,
                     diger_pazar=0,
                     not_alan='',
@@ -280,25 +288,22 @@ def senkronize_et():
                     son_senkronizasyon=now,
                 )
                 db.session.add(kayit)
-                db.session.flush()
-                yeni += 1
 
-        # BEKLEMEDE siparişlerini TAMAMLANDI olarak işaretle
         for s in siparisler:
-            if s.durum == 'BEKLEMEDE':
-                s.durum = 'TAMAMLANDI'
-                s.senkronize_edildi = True
-                s.senkronize_tarihi = now
+            s.durum = 'TAMAMLANDI'
+            s.senkronize_edildi = True
+            s.senkronize_tarihi = now
+            eklenen_sayi += 1
 
         db.session.commit()
         log_audit('senkronizasyon', 'kayitlar', None,
-                  yeni_deger={'tarih': tarih_db, 'yeni': yeni, 'guncellendi': guncellendi})
+                  yeni_deger={'tarih': tarih_db, 'eklenen_sayi': eklenen_sayi})
 
         return jsonify({
             'basarili': True,
-            'mesaj': f'{yeni} yeni kayıt oluşturuldu, {guncellendi} kayıt güncellendi.',
-            'yeni': yeni,
-            'guncellendi': guncellendi,
+            'mesaj': f'{eklenen_sayi} sipariş Kayıtlara eklendi.',
+            'tarih': tarih_db,
+            'eklenen_sayi': eklenen_sayi,
         })
 
     except Exception:

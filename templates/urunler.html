@@ -100,6 +100,10 @@
             <input type="text" class="form-control" id="ekleToplama" placeholder="Toplama adı veya ID">
           </div>
           <div class="col-12">
+            <label class="form-label">Bedenler</label>
+            <input type="text" class="form-control" id="ekleBedenler" placeholder="S,M,L,XL">
+          </div>
+          <div class="col-12">
             <div class="form-check">
               <input class="form-check-input" type="checkbox" id="ekleBedenAyrimi">
               <label class="form-check-label">Beden Ayrımı</label>
@@ -126,6 +130,10 @@
       <div class="modal-body">
         <input type="hidden" id="duzenleId">
         <div class="row g-3">
+          <div class="col-12">
+            <label class="form-label">Ürün Kodu</label>
+            <input type="text" class="form-control" id="duzenleKod" readonly>
+          </div>
           <div class="col-md-6">
             <label class="form-label">Marka</label>
             <input type="text" class="form-control" id="duzenleMarka">
@@ -133,6 +141,14 @@
           <div class="col-md-6">
             <label class="form-label">Açıklama</label>
             <input type="text" class="form-control" id="duzenleAciklama">
+          </div>
+          <div class="col-12">
+            <label class="form-label">Toplama</label>
+            <input type="text" class="form-control" id="duzenleToplama" placeholder="Toplama adı veya ID">
+          </div>
+          <div class="col-12">
+            <label class="form-label">Bedenler</label>
+            <input type="text" class="form-control" id="duzenleBedenler" placeholder="S,M,L,XL">
           </div>
           <div class="col-12">
             <div class="form-check">
@@ -163,7 +179,10 @@ let currentPage = 1;
 
 async function loadUrunler(page = 1) {
   currentPage = page;
-  const { ok, data } = await apiFetch(`/urunler/api/list?page=${page}&per_page=20`);
+  const kod = document.getElementById('filterKod').value.trim();
+  const query = new URLSearchParams({ page, per_page: 20 });
+  if (kod) query.set('kod', kod);
+  const { ok, data } = await apiFetch(`/urunler/api/list?${query.toString()}`);
   if (!ok) return;
 
   document.getElementById('urunCount').textContent = `Toplam: ${data.toplam} ürün`;
@@ -182,10 +201,10 @@ async function loadUrunler(page = 1) {
       <td>${u.marka}</td>
       <td>${u.aciklama || '-'}</td>
       <td>${u.toplama || '-'}</td>
-      <td>${u.beden_ayrimi ? '<span class="badge bg-warning">BEDEN</span>' : '<span class="badge bg-light text-muted">Yok</span>'}</td>
+      <td>${u.bedenler && u.bedenler.length ? u.bedenler.join(', ') : (u.beden_ayrimi ? '<span class="badge bg-warning">BEDENLİ</span>' : '<span class="badge bg-light text-muted">Yok</span>')}</td>
       <td>${u.durum ? '<span class="badge bg-success">Aktif</span>' : '<span class="badge bg-secondary">Pasif</span>'}</td>
       <td>
-        <button class="btn btn-sm btn-warning" onclick="openDuzenle(${u.id},'${u.marka}','${u.aciklama}',${u.beden_ayrimi},${u.durum})">✏️</button>
+        <button class="btn btn-sm btn-warning" onclick='openDuzenle(${JSON.stringify(u)})'>✏️</button>
         <button class="btn btn-sm btn-danger" onclick="urunSil(${u.id})">🗑️</button>
       </td>
     </tr>`).join('');
@@ -220,9 +239,6 @@ async function urunExcelYukle() {
 }
 
 async function urunEkle() {
-  const toplama_raw = document.getElementById('ekleToplama').value.trim();
-  const toplama_id = isNaN(toplama_raw) ? null : parseInt(toplama_raw);
-
   setLoading(true);
   const { data } = await apiFetch('/urunler/api/ekle', {
     method: 'POST',
@@ -231,13 +247,15 @@ async function urunEkle() {
       ana_kod: document.getElementById('ekleKod').value,
       marka: document.getElementById('ekleMarka').value,
       aciklama: document.getElementById('ekleAciklama').value,
-      toplama_id: toplama_id,
+      toplama_id: document.getElementById('ekleToplama').value,
+      bedenler: document.getElementById('ekleBedenler').value,
       beden_ayrimi: document.getElementById('ekleBedenAyrimi').checked,
     })
   });
   setLoading(false);
   if (data.basarili) {
-    showAlert('success', '✓ ' + data.mesaj);
+    const duzelmeMesaji = data.hatali_duzeltilen ? ` (${data.hatali_duzeltilen} hatalı sipariş BEKLEMEDE oldu)` : '';
+    showAlert('success', '✓ ' + data.mesaj + duzelmeMesaji);
     bootstrap.Modal.getInstance(document.getElementById('urunEkleModal')).hide();
     loadUrunler(1);
   } else {
@@ -245,12 +263,15 @@ async function urunEkle() {
   }
 }
 
-function openDuzenle(id, marka, aciklama, bedenAyrimi, durum) {
-  document.getElementById('duzenleId').value = id;
-  document.getElementById('duzenleMarka').value = marka;
-  document.getElementById('duzenleAciklama').value = aciklama;
-  document.getElementById('duzenleBedenAyrimi').checked = !!bedenAyrimi;
-  document.getElementById('duzenleDurum').checked = !!durum;
+function openDuzenle(urun) {
+  document.getElementById('duzenleId').value = urun.id;
+  document.getElementById('duzenleKod').value = urun.ana_kod || '';
+  document.getElementById('duzenleMarka').value = urun.marka || '';
+  document.getElementById('duzenleAciklama').value = urun.aciklama || '';
+  document.getElementById('duzenleToplama').value = urun.toplama_id || '';
+  document.getElementById('duzenleBedenler').value = (urun.bedenler || []).join(',');
+  document.getElementById('duzenleBedenAyrimi').checked = !!urun.beden_ayrimi;
+  document.getElementById('duzenleDurum').checked = !!urun.durum;
   new bootstrap.Modal(document.getElementById('urunDuzenleModal')).show();
 }
 
@@ -263,13 +284,16 @@ async function urunGuncelle() {
     body: JSON.stringify({
       marka: document.getElementById('duzenleMarka').value,
       aciklama: document.getElementById('duzenleAciklama').value,
+      toplama_id: document.getElementById('duzenleToplama').value,
+      bedenler: document.getElementById('duzenleBedenler').value,
       beden_ayrimi: document.getElementById('duzenleBedenAyrimi').checked,
       durum: document.getElementById('duzenleDurum').checked,
     })
   });
   setLoading(false);
   if (data.basarili) {
-    showAlert('success', '✓ ' + data.mesaj);
+    const duzelmeMesaji = data.hatali_duzeltilen ? ` (${data.hatali_duzeltilen} hatalı sipariş BEKLEMEDE oldu)` : '';
+    showAlert('success', '✓ ' + data.mesaj + duzelmeMesaji);
     bootstrap.Modal.getInstance(document.getElementById('urunDuzenleModal')).hide();
     loadUrunler(currentPage);
   } else {
@@ -294,4 +318,3 @@ function urunSil(id) {
 loadUrunler(1);
 </script>
 {% endblock %}
-
