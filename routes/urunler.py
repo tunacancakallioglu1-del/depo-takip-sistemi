@@ -2,12 +2,82 @@
 """Ürün yönetimi rotaları"""
 
 from flask import Blueprint, render_template, request, jsonify, send_file
-from database import db, Product, Size, CodeMapping, Toplama
-from routes.excel_handler import validate_excel_upload, get_toplama_by_value
+from sqlalchemy import or_
+
+from database import db, Product, Size, CodeMapping, Toplama, Order
+from routes.excel_handler import validate_excel_upload, get_toplama_by_value, determine_toplama
 from utils.excel_utils import build_template
 from utils.audit_utils import log_audit
 
 urunler_bp = Blueprint('urunler', __name__, url_prefix='/urunler')
+
+
+def _parse_bedenler(raw_bedenler):
+    if not raw_bedenler:
+        return []
+    if isinstance(raw_bedenler, list):
+        values = raw_bedenler
+    else:
+        values = str(raw_bedenler).split(',')
+
+    bedenler = []
+    seen = set()
+    for value in values:
+        beden = str(value or '').strip().upper()
+        if beden and beden not in seen:
+            bedenler.append(beden)
+            seen.add(beden)
+    return bedenler
+
+
+def _sync_sizes(product, bedenler):
+    Size.query.filter_by(product_id=product.id).delete(synchronize_session=False)
+    for beden in bedenler:
+        db.session.add(Size(product_id=product.id, beden=beden, toplama_id=product.toplama_id))
+
+
+def _check_product_orders(product):
+    eslesen_kodlar = [product.ana_kod]
+    eslesen_kodlar.extend(
+        mapping.kaynak_kod for mapping in product.code_mappings if mapping.kaynak_kod
+    )
+
+    hatali_siparisler = Order.query.filter(
+        Order.durum == 'HATALI',
+        Order.urun_id.is_(None),
+        Order.urun_kodu_ham.in_(eslesen_kodlar),
+    ).all()
+
+    duzeltilen = 0
+    for siparis in hatali_siparisler:
+        siparis.urun_id = product.id
+        toplama_id, beden_hatasi = determine_toplama(product, siparis.beden)
+
+        errors = []
+        if beden_hatasi:
+            errors.append(beden_hatasi)
+        elif toplama_id:
+            siparis.toplama_id = toplama_id
+
+        if not siparis.siparis_no:
+            errors.append('Sipariş No boş')
+        if not siparis.tarih:
+            errors.append('Tarih boş')
+        if int(siparis.adet or 0) <= 0:
+            errors.append('Adet ≤ 0')
+        if not siparis.toplama_id:
+            errors.append('Toplama seçilmemiş')
+
+        if errors:
+            siparis.durum = 'HATALI'
+            siparis.hata_sebebi = '; '.join(errors)
+            continue
+
+        siparis.durum = 'BEKLEMEDE'
+        siparis.hata_sebebi = None
+        duzeltilen += 1
+
+    return duzeltilen
 
 
 @urunler_bp.route('/')
@@ -19,7 +89,12 @@ def index():
 def api_list():
     page = max(int(request.args.get('page', 1)), 1)
     per_page = min(max(int(request.args.get('per_page', 20)), 1), 100)
-    pagination = Product.query.order_by(Product.id.desc()).paginate(page=page, per_page=per_page, error_out=False)
+    kod = str(request.args.get('kod', '')).strip().upper()
+    query = Product.query
+    if kod:
+        query = query.filter(Product.ana_kod.ilike(f'%{kod}%'))
+
+    pagination = query.order_by(Product.id.desc()).paginate(page=page, per_page=per_page, error_out=False)
 
     return jsonify({
         'basarili': True,
@@ -36,40 +111,61 @@ def api_ekle():
     ana_kod = str(data.get('ana_kod', '')).strip().upper()
     marka = str(data.get('marka', '')).strip()
     aciklama = str(data.get('aciklama', '')).strip()
-    toplama_id = data.get('toplama_id')
+    toplama = get_toplama_by_value(data.get('toplama_id') or data.get('toplama'))
+    bedenler = _parse_bedenler(data.get('bedenler'))
 
-    if not all([ana_kod, marka, aciklama, toplama_id]):
+    if not all([ana_kod, marka, aciklama, toplama]):
         return jsonify({'basarili': False, 'mesaj': 'Zorunlu alanlar eksik!'}), 400
 
-    if Product.query.filter_by(ana_kod=ana_kod, marka=marka).first():
-        return jsonify({'basarili': False, 'mesaj': 'Ürün zaten tanımlı!'}), 409
+    product = Product.query.filter_by(ana_kod=ana_kod).first()
+    durum_mesaji = 'Ürün güncellendi'
+    duzeltilen = 0
 
-    product = Product(
-        ana_kod=ana_kod,
-        marka=marka,
-        aciklama=aciklama,
-        toplama_id=int(toplama_id),
-        beden_ayrimi=bool(data.get('beden_ayrimi', False)),
-        durum=bool(data.get('durum', True)),
-        guncelleyen_kullanici='system',
-    )
-    db.session.add(product)
-    db.session.flush()
+    if product:
+        eski = product.to_dict()
+        product.marka = marka
+        product.aciklama = aciklama
+        product.toplama_id = toplama.id
+        product.beden_ayrimi = bool(data.get('beden_ayrimi', False))
+        product.durum = bool(data.get('durum', True))
+        product.guncelleyen_kullanici = 'system'
+        log_audit('update', 'products', product.id, eski_deger=eski, yeni_deger=product.to_dict())
+    else:
+        product = Product(
+            ana_kod=ana_kod,
+            marka=marka,
+            aciklama=aciklama,
+            toplama_id=toplama.id,
+            beden_ayrimi=bool(data.get('beden_ayrimi', False)),
+            durum=bool(data.get('durum', True)),
+            guncelleyen_kullanici='system',
+        )
+        db.session.add(product)
+        db.session.flush()
+        log_audit('create', 'products', product.id, yeni_deger=product.to_dict())
+        durum_mesaji = 'Ürün eklendi'
 
-    for size_row in data.get('bedenler', []):
-        beden = str(size_row.get('beden', '')).strip()
-        size_toplama_id = size_row.get('toplama_id')
-        if beden and size_toplama_id:
-            db.session.add(Size(product_id=product.id, beden=beden, toplama_id=int(size_toplama_id)))
+    if bedenler:
+        product.beden_ayrimi = True
+    _sync_sizes(product, bedenler)
 
     for map_code in data.get('kod_eslestirmeleri', []):
         kaynak = str(map_code).strip().upper()
         if kaynak:
-            db.session.add(CodeMapping(kaynak_kod=kaynak, hedef_urun_id=product.id))
+            mevcut_map = CodeMapping.query.filter_by(kaynak_kod=kaynak).first()
+            if mevcut_map:
+                mevcut_map.hedef_urun_id = product.id
+            else:
+                db.session.add(CodeMapping(kaynak_kod=kaynak, hedef_urun_id=product.id))
 
-    log_audit('create', 'products', product.id, yeni_deger=product.to_dict())
+    duzeltilen = _check_product_orders(product)
     db.session.commit()
-    return jsonify({'basarili': True, 'mesaj': 'Ürün eklendi', 'id': product.id})
+    return jsonify({
+        'basarili': True,
+        'mesaj': durum_mesaji,
+        'id': product.id,
+        'hatali_duzeltilen': duzeltilen,
+    })
 
 
 @urunler_bp.route('/api/<int:product_id>', methods=['PUT'])
@@ -77,25 +173,46 @@ def api_guncelle(product_id):
     product = Product.query.get_or_404(product_id)
     data = request.json or {}
     eski = product.to_dict()
+    bedenler = _parse_bedenler(data.get('bedenler'))
+    toplama = None
+    if 'toplama_id' in data or 'toplama' in data:
+        toplama = get_toplama_by_value(data.get('toplama_id') or data.get('toplama'))
 
+    if 'marka' in data:
+        product.marka = str(data.get('marka') or '').strip()
     if 'aciklama' in data:
         product.aciklama = str(data.get('aciklama') or '').strip()
-    if 'toplama_id' in data and data.get('toplama_id'):
-        product.toplama_id = int(data['toplama_id'])
+    if toplama:
+        product.toplama_id = toplama.id
     if 'beden_ayrimi' in data:
         product.beden_ayrimi = bool(data['beden_ayrimi'])
     if 'durum' in data:
         product.durum = bool(data['durum'])
 
+    if 'bedenler' in data or bedenler:
+        if bedenler:
+            product.beden_ayrimi = True
+        _sync_sizes(product, bedenler)
+
     product.guncelleyen_kullanici = 'system'
     log_audit('update', 'products', product.id, eski_deger=eski, yeni_deger=product.to_dict())
+    duzeltilen = _check_product_orders(product)
     db.session.commit()
-    return jsonify({'basarili': True, 'mesaj': 'Ürün güncellendi'})
+    return jsonify({'basarili': True, 'mesaj': 'Ürün güncellendi', 'hatali_duzeltilen': duzeltilen})
 
 
 @urunler_bp.route('/api/<int:product_id>', methods=['DELETE'])
 def api_sil(product_id):
     product = Product.query.get_or_404(product_id)
+    siparis_var = Order.query.filter(
+        or_(
+            Order.urun_id == product.id,
+            Order.urun_kodu_ham == product.ana_kod,
+        )
+    ).first()
+    if siparis_var:
+        return jsonify({'basarili': False, 'mesaj': 'Bu ürün siparişlerde kullanılıyor, silinemez!'}), 409
+
     eski = product.to_dict()
     db.session.delete(product)
     log_audit('delete', 'products', product_id, eski_deger=eski)

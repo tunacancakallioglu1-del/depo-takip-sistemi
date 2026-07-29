@@ -128,6 +128,7 @@ class Product(db.Model):
             'marka': self.marka,
             'toplama_id': self.toplama_id,
             'toplama': self.toplama.ad if self.toplama else None,
+            'bedenler': [size.beden for size in sorted(self.sizes, key=lambda item: item.beden)],
             'beden_ayrimi': self.beden_ayrimi,
             'durum': self.durum,
         }

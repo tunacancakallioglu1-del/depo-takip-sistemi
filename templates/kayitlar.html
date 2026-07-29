@@ -25,8 +25,8 @@
       </div>
       <div class="col-md-4">
         <div class="alert alert-info py-1 px-2 small mb-0">
-          ℹ Seçilen tarihteki BEKLEMEDE siparişleri Toplama bazında gruplar ve
-          Kayıtlara aktarır. Personel alanı boş bırakılır — sonradan manuel doldurun.
+          ℹ Sadece seçili tarihteki BEKLEMEDE siparişleri Kayıtlara aktarır.
+          Adet detaylarını kayda yazar; kayıt oluşmadan hiçbir sipariş TAMAMLANDI yapılmaz.
         </div>
       </div>
       <div class="col-md-4">
@@ -275,11 +275,15 @@ document.addEventListener('DOMContentLoaded', () => {
 // ── Senkronize Et ────────────────────────────────────────
 async function senkronizeEt() {
   const tarih = document.getElementById('senkTarih').value;
+  if (!tarih) {
+    showAlert('warning', 'Lütfen tarih seçin!');
+    return;
+  }
   setLoading(true);
   const { ok, data } = await apiFetch('/kayitlar/api/senkronize', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ tarih: tarih || undefined }),
+    body: JSON.stringify({ tarih }),
   });
   setLoading(false);
 
