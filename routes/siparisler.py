@@ -43,6 +43,38 @@ def _check_order(siparis_no, tarih, urun_id, urun_kodu_ham, beden, adet, toplama
     return errors
 
 
+def _revalidate_order(order):
+    """HATALI siparişi yeniden doğrula ve ürün/toplama eşlemesini güncelle."""
+    raw_code = str(order.urun_kodu_ham or '').strip()
+    product = None
+
+    if raw_code:
+        product = match_product_by_code(raw_code)
+        order.urun_id = product.id if product else None
+    elif order.urun_id:
+        product = Product.query.get(order.urun_id)
+
+    beden_error = None
+    if product:
+        toplama_id, beden_error = determine_toplama(product, order.beden)
+        if toplama_id:
+            order.toplama_id = toplama_id
+
+    errors = _check_order(
+        siparis_no=order.siparis_no,
+        tarih=order.tarih,
+        urun_id=order.urun_id,
+        urun_kodu_ham=order.urun_kodu_ham,
+        beden=order.beden,
+        adet=order.adet,
+        toplama_id=order.toplama_id,
+        product=product,
+    )
+    if beden_error and beden_error not in errors:
+        errors.append(beden_error)
+    return errors
+
+
 @siparisler_bp.route('/')
 def index():
     return render_template('siparisler.html')
@@ -110,6 +142,7 @@ def excel_yukle():
     hatali = 0
     row_errors = []
     unique_orders = set()
+    seen_siparis_nos = set()  # grup_baslangic_satiri takibi
 
     for row_no, row in enumerate(rows, start=2):
         siparis_no = str(row.get('Siparis No', '') or '').strip()
@@ -208,9 +241,11 @@ def excel_yukle():
             durum=durum,
             hata_sebebi=hata_sebebi,
             excel_yukleme_id=upload.id,
+            grup_baslangic_satiri=(siparis_no not in seen_siparis_nos),
         )
         db.session.add(order)
         if siparis_no:
+            seen_siparis_nos.add(siparis_no)
             unique_orders.add(siparis_no)
 
     upload.basarili = basarili
@@ -293,6 +328,7 @@ def api_list():
             'durum': item.durum or 'BEKLEMEDE',
             'hata_sebebi': item.hata_sebebi or '',
             'senkronize_edildi': item.senkronize_edildi,
+            'grup_baslangic_satiri': item.grup_baslangic_satiri,
         })
 
     return jsonify({'basarili': True, 'kayitlar': rows, 'toplam': pagination.total})
@@ -450,16 +486,7 @@ def api_grup_revalidate():
     duzeltilen = 0
     hatali_kalan = 0
     for order in orders:
-        errors = _check_order(
-            siparis_no=order.siparis_no,
-            tarih=order.tarih,
-            urun_id=order.urun_id,
-            urun_kodu_ham=order.urun_kodu_ham,
-            beden=order.beden,
-            adet=order.adet,
-            toplama_id=order.toplama_id,
-            product=order.urun,
-        )
+        errors = _revalidate_order(order)
         if errors:
             order.hata_sebebi = '; '.join(errors)
             hatali_kalan += 1
@@ -477,6 +504,47 @@ def api_grup_revalidate():
     else:
         mesaj = f'Hatalar devam ediyor ({hatali_kalan} sipariş)'
     return jsonify({'basarili': True, 'duzeltilen': duzeltilen, 'hatali_kalan': hatali_kalan, 'mesaj': mesaj})
+
+
+@siparisler_bp.route('/guncelle-hatali', methods=['POST'])
+def guncelle_hatali_siparisler_route():
+    """Tüm HATALI siparişleri yeniden doğrula."""
+    hatali_siparisler = Order.query.filter_by(durum='HATALI').all()
+
+    if not hatali_siparisler:
+        return jsonify({
+            'status': 'success',
+            'basarili': True,
+            'message': 'HATALI sipariş yok',
+            'duzeltilen': 0,
+            'hala_hatali': 0,
+        })
+
+    duzeltilen = 0
+    hala_hatali = 0
+
+    for siparis in hatali_siparisler:
+        errors = _revalidate_order(siparis)
+        if errors:
+            siparis.durum = 'HATALI'
+            siparis.hata_sebebi = '; '.join(errors)
+            hala_hatali += 1
+        else:
+            siparis.durum = 'BEKLEMEDE'
+            siparis.hata_sebebi = None
+            duzeltilen += 1
+
+    db.session.commit()
+    log_audit('hatali_toplu_revalidate', 'orders', None,
+              yeni_deger={'duzeltilen': duzeltilen, 'hatali_kalan': hala_hatali})
+
+    return jsonify({
+        'status': 'success',
+        'basarili': True,
+        'message': f"{duzeltilen} sipariş BEKLEMEDE'ye geçti. {hala_hatali} sipariş hâlâ HATALI",
+        'duzeltilen': duzeltilen,
+        'hala_hatali': hala_hatali,
+    })
 
 
 @siparisler_bp.route('/api/gecmis')
@@ -635,4 +703,3 @@ def api_excel_indir():
         download_name=f'siparisler_{tarih_str}.xlsx',
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     )
-

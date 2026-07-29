@@ -34,6 +34,18 @@
         <div id="urunler-{{ toplama.id }}" style="max-height:220px;overflow-y:auto">
           <div class="text-center text-muted small py-2">Yükleniyor...</div>
         </div>
+
+        <hr class="my-2">
+
+        <!-- Adet Filtresi Section -->
+        <div class="d-flex justify-content-between align-items-center mb-1">
+          <small class="fw-semibold text-muted">ADET AYIRIMI</small>
+          <button class="btn btn-outline-warning btn-sm" style="font-size:0.7rem"
+            onclick="openAdetFiltre({{ toplama.id }}, '{{ toplama.ad }}')">⚙️ Filtre</button>
+        </div>
+        <div id="adet-filtreler-{{ toplama.id }}" style="max-height:100px;overflow-y:auto">
+          <div class="text-muted small py-1">Yükleniyor...</div>
+        </div>
       </div>
     </div>
   </div>
@@ -167,6 +179,70 @@
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">İptal</button>
         <button type="button" class="btn btn-warning btn-sm" onclick="urunGuncelle()">💾 Güncelle</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Adet Filtresi Modal ── -->
+<div class="modal fade" id="adetFiltreModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="adetFiltreTitle">⚙️ Adet Ayırımı</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="adetFiltreToplamId">
+        <div class="alert alert-info small mb-3">
+          <strong>Adet Ayırımı:</strong> Aynı ürün koduna sahip siparişleri adet miktarına göre
+          farklı kişilere ayırabilirsiniz. Filtre yoksa tüm adetler aynı kişiye atanır.
+        </div>
+
+        <!-- Filtre Ekle Formu -->
+        <div class="card mb-3">
+          <div class="card-body py-2">
+            <div class="row g-2 align-items-end">
+              <div class="col-md-3">
+                <label class="form-label form-label-sm">Ürün Kodu *</label>
+                <input type="text" class="form-control form-control-sm" id="afUrunKodu" placeholder="TER0101">
+              </div>
+              <div class="col-md-2">
+                <label class="form-label form-label-sm">Beden</label>
+                <input type="text" class="form-control form-control-sm" id="afBeden" placeholder="M (boş=tümü)">
+              </div>
+              <div class="col-md-2">
+                <label class="form-label form-label-sm">Min Adet *</label>
+                <input type="number" class="form-control form-control-sm" id="afMinAdet" placeholder="1" min="1">
+              </div>
+              <div class="col-md-2">
+                <label class="form-label form-label-sm">Max Adet</label>
+                <input type="number" class="form-control form-control-sm" id="afMaxAdet" placeholder="Boş=sınırsız" min="1">
+              </div>
+              <div class="col-md-3">
+                <button class="btn btn-primary btn-sm w-100" onclick="adetFiltreEkle()">➕ Filtre Ekle</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Filtreler Tablosu -->
+        <table class="table table-sm table-bordered">
+          <thead class="table-light">
+            <tr>
+              <th>Ürün Kodu</th>
+              <th>Beden</th>
+              <th>Adet Aralığı</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="adetFiltreTablosu">
+            <tr><td colspan="4" class="text-center text-muted">Yükleniyor...</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Kapat</button>
       </div>
     </div>
   </div>
@@ -379,6 +455,116 @@ async function toplamExcelYukle() {
     res.innerHTML = `<div class="alert alert-danger">✗ ${data.mesaj}</div>`;
   }
 }
+
+// ── Adet Filtresi ─────────────────────────────────────
+let adetFiltreToplamId = null;
+
+function openAdetFiltre(toplamId, toplamAd) {
+  adetFiltreToplamId = toplamId;
+  document.getElementById('adetFiltreToplamId').value = toplamId;
+  document.getElementById('adetFiltreTitle').textContent = `⚙️ Adet Ayırımı — ${toplamAd}`;
+  document.getElementById('afUrunKodu').value = '';
+  document.getElementById('afBeden').value = '';
+  document.getElementById('afMinAdet').value = '';
+  document.getElementById('afMaxAdet').value = '';
+  loadAdetFiltreler(toplamId);
+  new bootstrap.Modal(document.getElementById('adetFiltreModal')).show();
+}
+
+async function loadAdetFiltreler(toplamId) {
+  const tbody = document.getElementById('adetFiltreTablosu');
+  tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Yükleniyor...</td></tr>';
+  const { ok, data } = await apiFetch(`/toplamalar/api/${toplamId}/adet-filtreleri`);
+  if (!ok || !data.basarili) {
+    tbody.innerHTML = '<tr><td colspan="4" class="text-danger text-center">Yüklenemedi</td></tr>';
+    return;
+  }
+  if (!data.filtreler.length) {
+    tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Filtre yok — tüm adetler aynı kişiye atanır</td></tr>';
+    return;
+  }
+  tbody.innerHTML = data.filtreler.map(f => `
+    <tr>
+      <td><span class="badge bg-primary">${f.urun_kodu}</span></td>
+      <td>${f.beden || '<em class="text-muted">Tümü</em>'}</td>
+      <td>${f.aralik} adet</td>
+      <td>
+        <button class="btn btn-outline-danger btn-sm" style="padding:1px 6px;font-size:0.7rem"
+          onclick="adetFiltreSil(${f.id},${toplamId})">🗑️</button>
+      </td>
+    </tr>`).join('');
+
+  // Kart içindeki özet widget'ını da güncelle
+  loadAdetFiltreOzet(toplamId, data.filtreler);
+}
+
+function loadAdetFiltreOzet(toplamId, filtreler) {
+  const el = document.getElementById(`adet-filtreler-${toplamId}`);
+  if (!el) return;
+  if (!filtreler.length) {
+    el.innerHTML = '<span class="text-muted small">Filtre yok</span>';
+    return;
+  }
+  el.innerHTML = filtreler.map(f =>
+    `<div class="d-flex justify-content-between py-0 border-bottom" style="font-size:0.75rem">
+      <span><span class="badge bg-warning text-dark me-1">${f.urun_kodu}</span>${f.beden || 'Tümü'}</span>
+      <span class="text-muted">${f.aralik} adet</span>
+    </div>`
+  ).join('');
+}
+
+async function adetFiltreEkle() {
+  const toplamId = document.getElementById('adetFiltreToplamId').value;
+  const urun_kodu = document.getElementById('afUrunKodu').value.trim();
+  const beden = document.getElementById('afBeden').value.trim() || null;
+  const min_adet = parseInt(document.getElementById('afMinAdet').value) || 0;
+  const max_adet_val = document.getElementById('afMaxAdet').value.trim();
+  const max_adet = max_adet_val ? parseInt(max_adet_val) : null;
+
+  if (!urun_kodu || min_adet <= 0) {
+    showAlert('warning', 'Ürün kodu ve min adet zorunludur!'); return;
+  }
+
+  setLoading(true);
+  const { data } = await apiFetch(`/toplamalar/api/${toplamId}/adet-filtre-ekle`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ urun_kodu, beden, min_adet, max_adet })
+  });
+  setLoading(false);
+
+  if (data.basarili) {
+    showAlert('success', '✓ Filtre eklendi');
+    document.getElementById('afUrunKodu').value = '';
+    document.getElementById('afBeden').value = '';
+    document.getElementById('afMinAdet').value = '';
+    document.getElementById('afMaxAdet').value = '';
+    loadAdetFiltreler(parseInt(toplamId));
+  } else {
+    showAlert('danger', '✗ ' + data.mesaj);
+  }
+}
+
+async function adetFiltreSil(filtreId, toplamId) {
+  confirmAction('Bu filtre silinecek. Emin misiniz?', async () => {
+    setLoading(true);
+    const { data } = await apiFetch(`/toplamalar/api/adet-filtre/${filtreId}`, { method: 'DELETE' });
+    setLoading(false);
+    if (data.basarili) {
+      showAlert('success', '✓ Filtre silindi');
+      loadAdetFiltreler(toplamId);
+    } else {
+      showAlert('danger', '✗ ' + data.mesaj);
+    }
+  });
+}
+
+// Load adet filter summaries on page load
+{% for toplama in toplamalar %}
+(async () => {
+  const { ok, data } = await apiFetch(`/toplamalar/api/{{ toplama.id }}/adet-filtreleri`);
+  if (ok && data.basarili) loadAdetFiltreOzet({{ toplama.id }}, data.filtreler);
+})();
+{% endfor %}
 </script>
 {% endblock %}
-
