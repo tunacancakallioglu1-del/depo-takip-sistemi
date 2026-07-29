@@ -188,14 +188,16 @@ class Order(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     siparis_no = db.Column(db.String(120), nullable=False)
     tarih = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    urun_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=False)
+    urun_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=True)
+    urun_kodu_ham = db.Column(db.String(120), nullable=True)
     beden = db.Column(db.String(50), nullable=True)
     adet = db.Column(db.Integer, nullable=False, default=1)
-    toplama_id = db.Column(db.Integer, db.ForeignKey('toplamalar.id'), nullable=False)
+    toplama_id = db.Column(db.Integer, db.ForeignKey('toplamalar.id'), nullable=True)
     personel_id = db.Column(db.Integer, db.ForeignKey('personeller.id'), nullable=True)
     kargo_kodu = db.Column(db.String(120), nullable=True)
     termin_tarihi = db.Column(db.Date, nullable=True)
-    durum = db.Column(db.String(50), default='Yeni', nullable=False)
+    durum = db.Column(db.String(50), default='BEKLEMEDE', nullable=False)
+    hata_sebebi = db.Column(db.Text, nullable=True)
     excel_yukleme_id = db.Column(db.Integer, db.ForeignKey('excel_uploads.id'), nullable=True)
     senkronize_edildi = db.Column(db.Boolean, default=False, nullable=False)
     senkronize_tarihi = db.Column(db.DateTime, nullable=True)
@@ -290,15 +292,69 @@ def veritabani_migrasyonu():
     existing_tables = inspector.get_table_names()
 
     with db.engine.connect() as conn:
-        # orders tablosuna yeni sütunlar ekle
+        # orders tablosunu yeniden oluştur (nullable urun_id/toplama_id + yeni sütunlar)
         if 'orders' in existing_tables:
             orders_cols = [c['name'] for c in inspector.get_columns('orders')]
-            if 'senkronize_edildi' not in orders_cols:
-                conn.execute(text('ALTER TABLE orders ADD COLUMN senkronize_edildi BOOLEAN DEFAULT 0 NOT NULL'))
-            if 'senkronize_tarihi' not in orders_cols:
-                conn.execute(text('ALTER TABLE orders ADD COLUMN senkronize_tarihi DATETIME'))
-            if 'referans_kayit_id' not in orders_cols:
-                conn.execute(text('ALTER TABLE orders ADD COLUMN referans_kayit_id INTEGER'))
+            # Eğer urun_kodu_ham sütunu yoksa tam migration yap
+            if 'urun_kodu_ham' not in orders_cols:
+                has_senkronize = 'senkronize_edildi' in orders_cols
+                has_referans = 'referans_kayit_id' in orders_cols
+                has_kargo = 'kargo_kodu' in orders_cols
+                has_termin = 'termin_tarihi' in orders_cols
+
+                conn.execute(text('''
+                    CREATE TABLE orders_v3_new (
+                        id INTEGER NOT NULL PRIMARY KEY,
+                        siparis_no VARCHAR(120) NOT NULL,
+                        tarih DATETIME NOT NULL,
+                        urun_id INTEGER REFERENCES products(id),
+                        urun_kodu_ham VARCHAR(120),
+                        beden VARCHAR(50),
+                        adet INTEGER NOT NULL DEFAULT 1,
+                        toplama_id INTEGER REFERENCES toplamalar(id),
+                        personel_id INTEGER REFERENCES personeller(id),
+                        kargo_kodu VARCHAR(120),
+                        termin_tarihi DATE,
+                        durum VARCHAR(50) NOT NULL DEFAULT 'BEKLEMEDE',
+                        hata_sebebi TEXT,
+                        excel_yukleme_id INTEGER REFERENCES excel_uploads(id),
+                        senkronize_edildi BOOLEAN NOT NULL DEFAULT 0,
+                        senkronize_tarihi DATETIME,
+                        referans_kayit_id INTEGER
+                    )
+                '''))
+
+                kargo_expr = 'kargo_kodu' if has_kargo else 'NULL'
+                termin_expr = 'termin_tarihi' if has_termin else 'NULL'
+                senkronize_expr = 'senkronize_edildi, senkronize_tarihi' if has_senkronize else '0, NULL'
+                referans_expr = 'referans_kayit_id' if has_referans else 'NULL'
+
+                conn.execute(text(f'''
+                    INSERT INTO orders_v3_new
+                        (id, siparis_no, tarih, urun_id, urun_kodu_ham, beden, adet,
+                         toplama_id, personel_id, kargo_kodu, termin_tarihi,
+                         durum, hata_sebebi, excel_yukleme_id,
+                         senkronize_edildi, senkronize_tarihi, referans_kayit_id)
+                    SELECT id, siparis_no, tarih, urun_id, NULL, beden, adet,
+                           toplama_id, personel_id, {kargo_expr}, {termin_expr},
+                           CASE durum
+                               WHEN 'Tamamlandı' THEN 'TAMAMLANDI'
+                               WHEN 'Yüklendi' THEN 'BEKLEMEDE'
+                               WHEN 'İptal' THEN 'HATALI'
+                               ELSE COALESCE(durum, 'BEKLEMEDE')
+                           END,
+                           NULL, excel_yukleme_id,
+                           {senkronize_expr}, {referans_expr}
+                    FROM orders
+                '''))
+
+                conn.execute(text('DROP TABLE orders'))
+                conn.execute(text('ALTER TABLE orders_v3_new RENAME TO orders'))
+                conn.execute(text('CREATE INDEX IF NOT EXISTS ix_order_siparis_no ON orders(siparis_no)'))
+                conn.execute(text('CREATE INDEX IF NOT EXISTS ix_order_tarih ON orders(tarih)'))
+                conn.execute(text('CREATE INDEX IF NOT EXISTS ix_order_toplama ON orders(toplama_id)'))
+            elif 'hata_sebebi' not in orders_cols:
+                conn.execute(text('ALTER TABLE orders ADD COLUMN hata_sebebi TEXT'))
 
         # kayitlar tablosuna yeni sütunlar ekle
         if 'kayitlar' in existing_tables:
