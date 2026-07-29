@@ -32,12 +32,6 @@ def _check_order(siparis_no, tarih, urun_id, urun_kodu_ham, beden, adet, toplama
             errors.append('Ürün Kodu boş')
     if product and product.beden_ayrimi and not beden:
         errors.append('Beden boş/tanımsız')
-    try:
-        adet_int = int(adet or 0)
-    except (ValueError, TypeError):
-        adet_int = 0
-    if adet_int <= 0:
-        errors.append('Adet ≤ 0')
     if not toplama_id:
         errors.append('Toplama seçilmemiş')
     return errors
@@ -362,12 +356,6 @@ def api_guncelle(order_id):
 
     if 'beden' in data:
         order.beden = str(data['beden'] or '').strip() or None
-
-    if 'adet' in data:
-        try:
-            order.adet = int(float(data['adet'] or 0))
-        except (ValueError, TypeError):
-            order.adet = 0
 
     if 'toplama_id' in data and data['toplama_id']:
         order.toplama_id = int(data['toplama_id'])
