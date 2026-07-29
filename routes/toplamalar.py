@@ -4,7 +4,7 @@ Toplamalar Rotaları
 """
 
 from flask import Blueprint, render_template, request, jsonify, send_file
-from database import db, Toplama, Product, Size, AdetFiltresi, toplama_ekle, toplama_sil
+from database import db, Toplama, Product, Size, toplama_ekle, toplama_sil
 from utils.excel_utils import build_template, load_excel_rows
 from utils.audit_utils import log_audit
 
@@ -223,65 +223,3 @@ def toplama_excel_yukle(toplama_id):
         'hatalar': hatalar,
     })
 
-
-# ── Adet Filtresi Yönetimi ──────────────────────────────────────────────────
-
-@toplamalar_bp.route('/api/<int:toplama_id>/adet-filtreleri')
-def adet_filtreleri_list(toplama_id):
-    """Bir toplamanın adet filtrelerini listele"""
-    Toplama.query.get_or_404(toplama_id)
-    filtreler = AdetFiltresi.query.filter_by(toplama_id=toplama_id).order_by(
-        AdetFiltresi.urun_kodu, AdetFiltresi.beden, AdetFiltresi.min_adet
-    ).all()
-    return jsonify({'basarili': True, 'filtreler': [f.to_dict() for f in filtreler]})
-
-
-@toplamalar_bp.route('/api/<int:toplama_id>/adet-filtre-ekle', methods=['POST'])
-def adet_filtre_ekle(toplama_id):
-    """Adet filtresi ekle"""
-    Toplama.query.get_or_404(toplama_id)
-    data = request.json or {}
-
-    urun_kodu = str(data.get('urun_kodu', '')).strip().upper()
-    beden = str(data.get('beden', '')).strip() or None
-
-    try:
-        min_adet = int(data.get('min_adet') or 0)
-    except (ValueError, TypeError):
-        min_adet = 0
-
-    max_adet_raw = data.get('max_adet')
-    try:
-        max_adet = int(max_adet_raw) if max_adet_raw not in (None, '', 0, '0') else None
-    except (ValueError, TypeError):
-        max_adet = None
-
-    if not urun_kodu:
-        return jsonify({'basarili': False, 'mesaj': 'Ürün kodu zorunludur!'}), 400
-    if min_adet <= 0:
-        return jsonify({'basarili': False, 'mesaj': 'Min adet 1 veya daha büyük olmalı!'}), 400
-    if max_adet is not None and max_adet < min_adet:
-        return jsonify({'basarili': False, 'mesaj': 'Max adet, min adetten küçük olamaz!'}), 400
-
-    filtre = AdetFiltresi(
-        toplama_id=toplama_id,
-        urun_kodu=urun_kodu,
-        beden=beden,
-        min_adet=min_adet,
-        max_adet=max_adet,
-    )
-    db.session.add(filtre)
-    log_audit('create', 'adet_filtreleri', None, yeni_deger=data)
-    db.session.commit()
-    return jsonify({'basarili': True, 'mesaj': 'Filtre eklendi', 'id': filtre.id, 'filtre': filtre.to_dict()})
-
-
-@toplamalar_bp.route('/api/adet-filtre/<int:filtre_id>', methods=['DELETE'])
-def adet_filtre_sil(filtre_id):
-    """Adet filtresi sil"""
-    filtre = AdetFiltresi.query.get_or_404(filtre_id)
-    eski = filtre.to_dict()
-    db.session.delete(filtre)
-    log_audit('delete', 'adet_filtreleri', filtre_id, eski_deger=eski)
-    db.session.commit()
-    return jsonify({'basarili': True, 'mesaj': 'Filtre silindi'})

@@ -29,10 +29,10 @@
         <div class="table-responsive">
           <table class="table mb-0">
             <thead>
-              <tr><th>Personel</th><th>Sipariş Sayısı</th><th>Ürün Sayısı</th></tr>
+              <tr><th>Personel</th><th>Sipariş Sayısı</th></tr>
             </thead>
             <tbody id="personelBody">
-              <tr><td colspan="3" class="text-center py-3 text-muted">Yükleniyor...</td></tr>
+              <tr><td colspan="2" class="text-center py-3 text-muted">Yükleniyor...</td></tr>
             </tbody>
           </table>
         </div>
@@ -55,10 +55,10 @@
         <div class="table-responsive">
           <table class="table mb-0">
             <thead>
-              <tr><th>Toplama</th><th>Sipariş Sayısı</th><th>Ürün Sayısı</th><th>Farklı Ürün</th></tr>
+              <tr><th>Toplama</th><th>Sipariş Sayısı</th><th>Farklı Ürün</th></tr>
             </thead>
             <tbody id="toplamBody">
-              <tr><td colspan="4" class="text-center py-3 text-muted">Yükleniyor...</td></tr>
+              <tr><td colspan="3" class="text-center py-3 text-muted">Yükleniyor...</td></tr>
             </tbody>
           </table>
         </div>
@@ -77,10 +77,10 @@
         <div class="table-responsive">
           <table class="table mb-0">
             <thead>
-              <tr><th>Ürün Kodu</th><th>Marka</th><th>Sipariş Sayısı</th><th>Toplam Adet</th></tr>
+              <tr><th>Ürün Kodu</th><th>Marka</th><th>Sipariş Sayısı</th></tr>
             </thead>
             <tbody id="urunBody">
-              <tr><td colspan="4" class="text-center py-3 text-muted">Yükleniyor...</td></tr>
+              <tr><td colspan="3" class="text-center py-3 text-muted">Yükleniyor...</td></tr>
             </tbody>
           </table>
         </div>
@@ -188,8 +188,7 @@ async function loadPersonelRapor() {
     <tr>
       <td><strong>${row.personel}</strong></td>
       <td>${formatNumber(row.siparis_sayisi)}</td>
-      <td>${formatNumber(row.urun_sayisi)}</td>
-    </tr>`).join('') || '<tr><td colspan="3" class="text-center text-muted">Veri yok</td></tr>';
+    </tr>`).join('') || '<tr><td colspan="2" class="text-center text-muted">Veri yok</td></tr>';
 
   if (personelChartInstance) personelChartInstance.destroy();
   personelChartInstance = new Chart(document.getElementById('personelChart'), {
@@ -198,7 +197,6 @@ async function loadPersonelRapor() {
       labels: data.veri.map(r => r.personel),
       datasets: [
         { label: 'Sipariş', data: data.veri.map(r => r.siparis_sayisi), backgroundColor: 'rgba(99,102,241,0.75)' },
-        { label: 'Ürün', data: data.veri.map(r => r.urun_sayisi), backgroundColor: 'rgba(16,185,129,0.75)' },
       ]
     },
     options: { responsive: true, plugins: { legend: { position: 'top' } } }
@@ -212,9 +210,8 @@ async function loadToplamRapor() {
     <tr>
       <td><strong>${row.toplama}</strong></td>
       <td>${formatNumber(row.siparis_sayisi)}</td>
-      <td>${formatNumber(row.urun_sayisi)}</td>
       <td>${formatNumber(row.farkli_urun_sayisi)}</td>
-    </tr>`).join('') || '<tr><td colspan="4" class="text-center text-muted">Veri yok</td></tr>';
+    </tr>`).join('') || '<tr><td colspan="3" class="text-center text-muted">Veri yok</td></tr>';
 }
 
 async function loadUrunRapor() {
@@ -225,8 +222,7 @@ async function loadUrunRapor() {
       <td><span class="badge bg-primary-soft text-primary">${row.ana_kod}</span></td>
       <td>${row.marka}</td>
       <td>${formatNumber(row.siparis_sayisi)}</td>
-      <td>${formatNumber(row.adet)}</td>
-    </tr>`).join('') || '<tr><td colspan="4" class="text-center text-muted">Veri yok</td></tr>';
+    </tr>`).join('') || '<tr><td colspan="3" class="text-center text-muted">Veri yok</td></tr>';
 }
 
 async function loadIadeAnaliz() {
