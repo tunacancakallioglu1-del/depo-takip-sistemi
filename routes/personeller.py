@@ -72,6 +72,16 @@ def api_guncelle(id):
         return jsonify({'basarili': False, 'mesaj': 'İşlem sırasında bir hata oluştu.'}), 500
 
 
+@personeller_bp.route('/api/ara', methods=['GET'])
+def api_ara():
+    """İsim ile personel ara (autocomplete)"""
+    q = request.args.get('q', '').strip()
+    if len(q) < 1:
+        return jsonify({'personeller': []})
+    personeller = Personel.query.filter(Personel.ad.ilike(f'%{q}%')).order_by(Personel.ad).all()
+    return jsonify({'personeller': [{'id': p.id, 'ad': p.ad} for p in personeller]})
+
+
 @personeller_bp.route('/api/sil/<int:id>', methods=['DELETE'])
 def api_sil(id):
     """AJAX ile personel sil"""
