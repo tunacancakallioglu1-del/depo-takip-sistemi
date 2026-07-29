@@ -64,7 +64,10 @@
         <input type="date" class="form-control form-control-sm" id="filterBitis">
       </div>
       <div class="col-md-2">
-        <button class="btn btn-primary btn-sm w-100" onclick="loadKayitlar()">🔍 Filtrele</button>
+        <div class="d-flex gap-1">
+          <button class="btn btn-primary btn-sm flex-fill" onclick="loadKayitlar()">🔍 Filtrele</button>
+          <button class="btn btn-secondary btn-sm" onclick="sifirlaFiltre()" title="Son 30 güne sıfırla">↺</button>
+        </div>
       </div>
     </div>
   </div>
@@ -265,12 +268,121 @@
 // Upload zone drag-drop
 initUploadZone('uploadZone', 'excelFile');
 
-// Set today's date as default for sync
+// Set today's date as default for sync, and last 30 days for filter
 document.addEventListener('DOMContentLoaded', () => {
-  const today = new Date().toISOString().slice(0, 10);
-  document.getElementById('senkTarih').value = today;
-  document.getElementById('eTarih').value = today;
+  const today = new Date();
+  const todayStr = today.toISOString().slice(0, 10);
+  document.getElementById('senkTarih').value = todayStr;
+  document.getElementById('eTarih').value = todayStr;
+
+  // Default filter: last 30 days
+  const otuzGunOnce = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+  document.getElementById('filterBaslangic').value = otuzGunOnce.toISOString().slice(0, 10);
+  document.getElementById('filterBitis').value = todayStr;
+
+  loadKayitlar();
 });
+
+// ── Filtre Sıfırla ──────────────────────────────────────
+function sifirlaFiltre() {
+  const today = new Date();
+  const todayStr = today.toISOString().slice(0, 10);
+  const otuzGunOnce = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+  document.getElementById('filterBaslangic').value = otuzGunOnce.toISOString().slice(0, 10);
+  document.getElementById('filterBitis').value = todayStr;
+  document.getElementById('filterPersonel').value = '';
+  document.getElementById('filterToplama').value = '';
+  loadKayitlar();
+}
+
+// ── Kayıtları AJAX ile Yükle ─────────────────────────────
+async function loadKayitlar() {
+  const personelId = document.getElementById('filterPersonel').value;
+  const toplamId = document.getElementById('filterToplama').value;
+  const baslangic = document.getElementById('filterBaslangic').value;
+  const bitis = document.getElementById('filterBitis').value;
+
+  if (baslangic && bitis && baslangic > bitis) {
+    showAlert('warning', 'Başlangıç tarihi, bitiş tarihinden sonra olamaz!');
+    return;
+  }
+
+  const params = new URLSearchParams();
+  if (personelId) params.set('personel_id', personelId);
+  if (toplamId) params.set('toplama_id', toplamId);
+  if (baslangic) params.set('tarih_baslangic', baslangic);
+  if (bitis) params.set('tarih_bitis', bitis);
+
+  const { ok, data } = await apiFetch(`/kayitlar/api/list?${params.toString()}`);
+  if (!ok || !data.basarili) {
+    showAlert('danger', data.mesaj || 'Kayıtlar yüklenemedi.');
+    return;
+  }
+
+  const tbody = document.getElementById('kayitlarBody');
+  if (!data.kayitlar || data.kayitlar.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="9" class="text-center py-4 text-muted">Seçili tarih aralığında kayıt bulunamadı.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = data.kayitlar.map(k => {
+    const toplam = ((k.trendyol_siparis || 0) + (k.trendyol_fatura || 0) + (k.diger_pazar || 0));
+    return `<tr>
+      <td>${k.tarih}</td>
+      <td>${k.personel || '—'}</td>
+      <td>${k.toplama}</td>
+      <td>${k.trendyol_siparis}</td>
+      <td>${k.trendyol_fatura}</td>
+      <td>${k.diger_pazar}</td>
+      <td><strong>${toplam}</strong></td>
+      <td>${k.not || ''}</td>
+      <td>
+        <button class="btn btn-sm btn-warning editBtnDyn"
+          data-id="${k.id}"
+          data-tarih="${k.tarih}"
+          data-personel="${k.personel_id || ''}"
+          data-toplama="${k.toplama_id}"
+          data-ts="${k.trendyol_siparis}"
+          data-tf="${k.trendyol_fatura}"
+          data-dp="${k.diger_pazar}"
+          data-not="${(k.not || '').replace(/"/g, '&quot;')}">✏️</button>
+        <button class="btn btn-sm btn-danger deleteBtnDyn" data-id="${k.id}">🗑️</button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  // Attach event listeners for dynamically created buttons
+  tbody.querySelectorAll('.editBtnDyn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.getElementById('dId').value = btn.dataset.id;
+      const parts = btn.dataset.tarih.split('.');
+      document.getElementById('dTarih').value = parts.length === 3 ? `${parts[2]}-${parts[1]}-${parts[0]}` : btn.dataset.tarih;
+      document.getElementById('dPersonel').value = btn.dataset.personel;
+      document.getElementById('dToplama').value = btn.dataset.toplama;
+      document.getElementById('dTS').value = btn.dataset.ts;
+      document.getElementById('dTF').value = btn.dataset.tf;
+      document.getElementById('dDP').value = btn.dataset.dp;
+      document.getElementById('dNot').value = btn.dataset.not;
+      new bootstrap.Modal(document.getElementById('duzenleModal')).show();
+    });
+  });
+
+  tbody.querySelectorAll('.deleteBtnDyn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      confirmAction('Bu kayıt silinecek. Emin misiniz?', async () => {
+        setLoading(true);
+        const { data: delData } = await apiFetch(`/kayitlar/api/sil/${btn.dataset.id}`, { method: 'DELETE' });
+        setLoading(false);
+        if (delData.basarili) {
+          showAlert('success', '✓ ' + delData.mesaj);
+          loadKayitlar();
+        } else {
+          showAlert('danger', '✗ ' + delData.mesaj);
+        }
+      });
+    });
+  });
+}
 
 // ── Senkronize Et ────────────────────────────────────────
 async function senkronizeEt() {
@@ -291,7 +403,7 @@ async function senkronizeEt() {
   if (data.basarili) {
     res.innerHTML = `<div class="alert alert-success py-1">✓ ${data.mesaj}</div>`;
     showAlert('success', '✓ ' + data.mesaj);
-    setTimeout(() => location.reload(), 1200);
+    setTimeout(() => { loadKayitlar(); res.innerHTML = ''; }, 1200);
   } else {
     res.innerHTML = `<div class="alert alert-danger py-1">✗ ${data.mesaj}</div>`;
     showAlert('danger', '✗ ' + data.mesaj);
@@ -322,7 +434,7 @@ async function kayitEkle() {
   if (data.basarili) {
     showAlert('success', '✓ ' + data.mesaj);
     bootstrap.Modal.getInstance(document.getElementById('ekleModal')).hide();
-    setTimeout(() => location.reload(), 800);
+    setTimeout(() => loadKayitlar(), 800);
   } else {
     showAlert('danger', '✗ ' + data.mesaj);
   }
@@ -365,7 +477,7 @@ async function kayitGuncelle() {
   if (data.basarili) {
     showAlert('success', '✓ ' + data.mesaj);
     bootstrap.Modal.getInstance(document.getElementById('duzenleModal')).hide();
-    setTimeout(() => location.reload(), 800);
+    setTimeout(() => loadKayitlar(), 800);
   } else {
     showAlert('danger', '✗ ' + data.mesaj);
   }
@@ -414,7 +526,7 @@ async function excelYukle() {
             ${data.hatalar.map(h => `<li>Satır ${h.satir}: ${h.hata}</li>`).join('')}
           </ul>
         </div>` : ''}`;
-    setTimeout(() => location.reload(), 2000);
+    setTimeout(() => loadKayitlar(), 2000);
   } else {
     res.innerHTML = `<div class="alert alert-danger">✗ ${data.mesaj}</div>`;
   }

@@ -30,30 +30,56 @@ def lista():
 @kayitlar_bp.route('/api/list', methods=['GET'])
 def api_list():
     """AJAX ile kayıtları getir"""
-    
+    from datetime import date as date_type
+
     # Filtreleri al
     personel_id = request.args.get('personel_id')
     toplama_id = request.args.get('toplama_id')
-    tarih_baslangic = request.args.get('tarih_baslangic')
-    tarih_bitis = request.args.get('tarih_bitis')
-    
-    # Sorgu oluştur
+    tarih_baslangic_str = request.args.get('tarih_baslangic')
+    tarih_bitis_str = request.args.get('tarih_bitis')
+
+    # Tarih filtrelerini date objesine çevir (YYYY-MM-DD formatı beklenir)
+    tarih_baslangic = None
+    tarih_bitis = None
+    try:
+        if tarih_baslangic_str:
+            tarih_baslangic = datetime.strptime(tarih_baslangic_str, '%Y-%m-%d').date()
+        if tarih_bitis_str:
+            tarih_bitis = datetime.strptime(tarih_bitis_str, '%Y-%m-%d').date()
+    except ValueError:
+        return jsonify({'basarili': False, 'mesaj': 'Geçersiz tarih formatı!'}), 400
+
+    # Sorgu oluştur (tarih dışındaki filtreler SQL ile)
     sorgu = Kayit.query
-    
+
     if personel_id:
         sorgu = sorgu.filter_by(personel_id=int(personel_id))
-    
+
     if toplama_id:
         sorgu = sorgu.filter_by(toplama_id=int(toplama_id))
-    
-    if tarih_baslangic:
-        sorgu = sorgu.filter(Kayit.tarih >= tarih_baslangic)
-    
-    if tarih_bitis:
-        sorgu = sorgu.filter(Kayit.tarih <= tarih_bitis)
-    
-    kayitlar = sorgu.order_by(Kayit.tarih.desc()).all()
-    
+
+    kayitlar = sorgu.all()
+
+    # Tarihler DD.MM.YYYY string olarak saklandığından Python seviyesinde filtrele
+    if tarih_baslangic or tarih_bitis:
+        filtrelenmis = []
+        for k in kayitlar:
+            try:
+                k_tarih = datetime.strptime(k.tarih, '%d.%m.%Y').date()
+            except ValueError:
+                continue
+            if tarih_baslangic and k_tarih < tarih_baslangic:
+                continue
+            if tarih_bitis and k_tarih > tarih_bitis:
+                continue
+            filtrelenmis.append(k)
+        kayitlar = filtrelenmis
+
+    # Tarihe göre azalan sıralama
+    kayitlar.sort(key=lambda k: (
+        datetime.strptime(k.tarih, '%d.%m.%Y') if '.' in k.tarih else datetime.min
+    ), reverse=True)
+
     return jsonify({
         'basarili': True,
         'kayitlar': [k.to_dict() for k in kayitlar],
