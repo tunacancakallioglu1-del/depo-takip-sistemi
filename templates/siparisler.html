@@ -142,14 +142,13 @@
             <th>Tarih</th>
             <th>Ürün Kodu</th>
             <th>Beden</th>
-            <th>Adet</th>
             <th>Toplama</th>
             <th>Durum / Hata</th>
             <th style="width:130px">İşlem</th>
           </tr>
         </thead>
         <tbody id="ordersBody">
-          <tr><td colspan="9" class="text-center py-4 text-muted">Yükleniyor...</td></tr>
+          <tr><td colspan="8" class="text-center py-4 text-muted">Yükleniyor...</td></tr>
         </tbody>
       </table>
     </div>
@@ -240,15 +239,11 @@
             <label class="form-label small">Ürün Kodu</label>
             <input type="text" class="form-control form-control-sm" id="sipDuzenleUrunKodu" placeholder="TER0101">
           </div>
-          <div class="col-md-4">
+          <div class="col-md-6">
             <label class="form-label small">Beden</label>
             <input type="text" class="form-control form-control-sm" id="sipDuzenleBeden" placeholder="S,M,L,XL…">
           </div>
-          <div class="col-md-4">
-            <label class="form-label small">Adet</label>
-            <input type="number" class="form-control form-control-sm" id="sipDuzenleAdet" min="1">
-          </div>
-          <div class="col-md-4">
+          <div class="col-md-6">
             <label class="form-label small">Toplama</label>
             <select class="form-select form-select-sm" id="sipDuzenleToplama"></select>
           </div>
@@ -399,7 +394,6 @@ async function loadOrders(page = 1) {
   grupMap.forEach((rows, siparis_no) => {
     const grup_durumu = getGrupDurumu(rows);
     const hata_sebebi = getGrupHataSebebi(rows);
-    const toplam_adet = rows.reduce((sum, r) => sum + (r.adet || 0), 0);
     const tarih = rows[0].tarih;
     const toplama = rows[0].toplama;
     const idx = grupIdx++;
@@ -414,7 +408,6 @@ async function loadOrders(page = 1) {
       <td class="small">${formatDate(tarih)}</td>
       <td class="text-muted small">—</td>
       <td class="text-muted small">—</td>
-      <td class="small fw-normal">${toplam_adet}</td>
       <td class="small fw-normal">${escHtml(toplama || '—')}</td>
       <td>
         ${durumBadge(grup_durumu, hata_sebebi)}
@@ -439,7 +432,6 @@ async function loadOrders(page = 1) {
         <td></td>
         <td><span class="badge bg-primary-soft text-primary small">${escHtml(row.urun_kodu || '-')}</span></td>
         <td class="small">${escHtml(row.beden || '-')}</td>
-        <td class="small">${row.adet}</td>
         <td class="small">${escHtml(row.toplama || '-')}</td>
         <td>
           ${row.hata_sebebi
@@ -599,7 +591,6 @@ async function openSipDuzenle(id) {
   document.getElementById('sipDuzenleTarih').value = s.tarih || '';
   document.getElementById('sipDuzenleUrunKodu').value = s.urun_kodu || '';
   document.getElementById('sipDuzenleBeden').value = s.beden || '';
-  document.getElementById('sipDuzenleAdet').value = s.adet;
   document.getElementById('sipDuzenleToplama').value = s.toplama_id || '';
   document.getElementById('sipDuzenleHata').classList.add('d-none');
   new bootstrap.Modal(document.getElementById('sipDuzenleModal')).show();
@@ -611,7 +602,6 @@ async function sipGuncelle() {
     tarih: document.getElementById('sipDuzenleTarih').value,
     urun_kodu: document.getElementById('sipDuzenleUrunKodu').value,
     beden: document.getElementById('sipDuzenleBeden').value,
-    adet: document.getElementById('sipDuzenleAdet').value,
     toplama_id: document.getElementById('sipDuzenleToplama').value,
   };
   setLoading(true);
