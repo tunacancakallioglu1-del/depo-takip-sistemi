@@ -8,15 +8,14 @@ from flask import Blueprint, render_template, request, jsonify, send_file
 from openpyxl import Workbook
 from sqlalchemy import or_
 
-from database import db, Order, Personel, Product, Toplama, ExcelUpload
+from database import db, Order, Product, Toplama, ExcelUpload
 from routes.excel_handler import match_product_by_code, determine_toplama, parse_row_date
 from utils.excel_utils import build_template, load_excel_rows, calculate_file_hash
-from utils.validators import validate_headers
 from utils.audit_utils import log_audit
 
 siparisler_bp = Blueprint('siparisler', __name__, url_prefix='/siparisler')
 
-SIPARIS_HEADERS = ['Siparis No', 'Tarih', 'Urun Kodu', 'Beden', 'Adet', 'Toplama', 'Personel']
+SIPARIS_HEADERS = ['Siparis No', 'Tarih', 'Urun Kodu', 'Beden', 'Adet', 'Toplama']
 
 
 def _check_order(siparis_no, tarih, urun_id, urun_kodu_ham, beden, adet, toplama_id, product=None):
@@ -51,13 +50,11 @@ def index():
 
 @siparisler_bp.route('/api/meta')
 def api_meta():
-    """Dropdown verileri: toplamalar ve personeller"""
+    """Dropdown verileri: toplamalar"""
     toplamalar = Toplama.query.order_by(Toplama.ad).all()
-    personeller = Personel.query.order_by(Personel.ad).all()
     return jsonify({
         'basarili': True,
         'toplamalar': [{'id': t.id, 'ad': t.ad} for t in toplamalar],
-        'personeller': [{'id': p.id, 'ad': p.ad} for p in personeller],
     })
 
 
@@ -90,7 +87,9 @@ def excel_yukle():
     except Exception:
         return jsonify({'basarili': False, 'mesaj': 'Excel okunamadı. Dosya formatını kontrol edin.'}), 400
 
-    if not validate_headers(headers, SIPARIS_HEADERS):
+    # Zorunlu başlıkları kontrol et; fazladan sütunlar (örn. Personel) yoksayılır
+    actual_core = [str(h).strip() for h in headers[:len(SIPARIS_HEADERS)]]
+    if actual_core != SIPARIS_HEADERS:
         return jsonify({
             'basarili': False,
             'mesaj': 'Excel başlıkları/sırası hatalı!',
@@ -117,7 +116,7 @@ def excel_yukle():
         urun_kodu_raw = str(row.get('Urun Kodu', '') or '').strip()
         beden = str(row.get('Beden', '') or '').strip() or None
         toplama_raw = str(row.get('Toplama', '') or '').strip() or None
-        personel_raw = str(row.get('Personel', '') or '').strip() or None
+        # Personel sütunu siparişlerde kullanılmıyor — yoksay
 
         try:
             adet = int(float(row.get('Adet') or 0))
@@ -163,12 +162,6 @@ def excel_yukle():
         if not tarih:
             errors.append('Tarih boş')
 
-        personel_id = None
-        if personel_raw:
-            p = Personel.query.filter_by(ad=personel_raw).first()
-            if p:
-                personel_id = p.id
-
         if errors:
             durum = 'HATALI'
             hata_sebebi = '; '.join(errors)
@@ -211,7 +204,7 @@ def excel_yukle():
             beden=beden,
             adet=adet,
             toplama_id=toplama_id,
-            personel_id=personel_id,
+            personel_id=None,
             durum=durum,
             hata_sebebi=hata_sebebi,
             excel_yukleme_id=upload.id,
@@ -250,7 +243,6 @@ def api_list():
     tarih_baslangic = request.args.get('tarih_baslangic', '').strip()
     tarih_bitis = request.args.get('tarih_bitis', '').strip()
     f_toplama_id = request.args.get('toplama_id', '').strip()
-    f_personel_id = request.args.get('personel_id', '').strip()
     f_durum = request.args.get('durum', '').strip()
 
     query = Order.query
@@ -282,9 +274,6 @@ def api_list():
     if f_toplama_id:
         query = query.filter(Order.toplama_id == int(f_toplama_id))
 
-    if f_personel_id:
-        query = query.filter(Order.personel_id == int(f_personel_id))
-
     if f_durum:
         query = query.filter(Order.durum == f_durum)
 
@@ -301,8 +290,6 @@ def api_list():
             'adet': item.adet,
             'toplama': item.toplama.ad if item.toplama else '',
             'toplama_id': item.toplama_id,
-            'personel': item.personel.ad if item.personel else '',
-            'personel_id': item.personel_id,
             'durum': item.durum or 'BEKLEMEDE',
             'hata_sebebi': item.hata_sebebi or '',
             'senkronize_edildi': item.senkronize_edildi,
@@ -324,7 +311,6 @@ def api_get(order_id):
             'beden': order.beden or '',
             'adet': order.adet,
             'toplama_id': order.toplama_id,
-            'personel_id': order.personel_id,
             'durum': order.durum or 'BEKLEMEDE',
             'hata_sebebi': order.hata_sebebi or '',
         },
@@ -349,9 +335,6 @@ def api_guncelle(order_id):
 
     if 'toplama_id' in data and data['toplama_id']:
         order.toplama_id = int(data['toplama_id'])
-
-    if 'personel_id' in data:
-        order.personel_id = int(data['personel_id']) if data['personel_id'] else None
 
     if 'tarih' in data and data['tarih']:
         try:
@@ -427,8 +410,6 @@ def api_toplu_guncelle():
     guncellenen = 0
     orders = Order.query.filter(Order.id.in_(ids)).all()
     for order in orders:
-        if 'personel_id' in data:
-            order.personel_id = int(data['personel_id']) if data['personel_id'] else None
         if 'toplama_id' in data and data['toplama_id']:
             order.toplama_id = int(data['toplama_id'])
         guncellenen += 1
@@ -540,7 +521,6 @@ def api_excel_indir():
     tarih_baslangic = request.args.get('tarih_baslangic', '').strip()
     tarih_bitis = request.args.get('tarih_bitis', '').strip()
     f_toplama_id = request.args.get('toplama_id', '').strip()
-    f_personel_id = request.args.get('personel_id', '').strip()
     f_durum = request.args.get('durum', '').strip()
 
     query = Order.query
@@ -565,8 +545,6 @@ def api_excel_indir():
             pass
     if f_toplama_id:
         query = query.filter(Order.toplama_id == int(f_toplama_id))
-    if f_personel_id:
-        query = query.filter(Order.personel_id == int(f_personel_id))
     if f_durum:
         query = query.filter(Order.durum == f_durum)
 
@@ -575,7 +553,7 @@ def api_excel_indir():
     wb = Workbook()
     ws = wb.active
     ws.title = 'Siparişler'
-    ws.append(['Sipariş No', 'Tarih', 'Ürün Kodu', 'Beden', 'Adet', 'Toplama', 'Personel', 'Durum'])
+    ws.append(['Sipariş No', 'Tarih', 'Ürün Kodu', 'Beden', 'Adet', 'Toplama', 'Durum'])
     for o in orders:
         ws.append([
             o.siparis_no or '',
@@ -584,7 +562,6 @@ def api_excel_indir():
             o.beden or '',
             o.adet or 0,
             o.toplama.ad if o.toplama else '',
-            o.personel.ad if o.personel else '',
             o.durum or '',
         ])
 

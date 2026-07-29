@@ -82,7 +82,7 @@ def api_guncelle(id):
         sonuc = kayit_guncelle(
             id=id,
             tarih=tarih_formatted,
-            personel_id=int(veri.get('personel_id', kayit.personel_id)),
+            personel_id=int(veri['personel_id']) if veri.get('personel_id') else None,
             toplama_id=int(veri.get('toplama_id', kayit.toplama_id)),
             trendyol_siparis=float(veri.get('trendyol_siparis', kayit.trendyol_siparis) or 0),
             trendyol_fatura=float(veri.get('trendyol_fatura', kayit.trendyol_fatura) or 0),
@@ -158,14 +158,17 @@ def excel_yukle():
             personel_adi = str(row.get('Personel', '')).strip()
             toplama_adi = str(row.get('Toplama', '')).strip()
 
-            if not tarih_raw or not personel_adi or not toplama_adi:
-                hatalar.append({'satir': idx, 'hata': 'Tarih, Personel veya Toplama boş'})
+            if not tarih_raw or not toplama_adi:
+                hatalar.append({'satir': idx, 'hata': 'Tarih veya Toplama boş'})
                 continue
 
-            personel = Personel.query.filter_by(ad=personel_adi).first()
-            if not personel:
-                hatalar.append({'satir': idx, 'hata': f'Personel bulunamadı: {personel_adi}'})
-                continue
+            personel_id = None
+            if personel_adi:
+                personel = Personel.query.filter_by(ad=personel_adi).first()
+                if not personel:
+                    hatalar.append({'satir': idx, 'hata': f'Personel bulunamadı: {personel_adi}'})
+                    continue
+                personel_id = personel.id
 
             toplama = Toplama.query.filter_by(ad=toplama_adi).first()
             if not toplama:
@@ -182,7 +185,7 @@ def excel_yukle():
             from database import kayit_ekle as _kayit_ekle
             _kayit_ekle(
                 tarih=tarih_formatted,
-                personel_id=personel.id,
+                personel_id=personel_id,
                 toplama_id=toplama.id,
                 trendyol_siparis=float(row.get('Trendyol Siparis') or 0),
                 trendyol_fatura=float(row.get('Trendyol Fatura') or 0),
@@ -211,8 +214,8 @@ def excel_yukle():
 def senkronize_et():
     """Seçili tarihin siparişlerini kayıtlara senkronize et.
 
-    BEKLEMEDE ve TAMAMLANDI olan siparişleri personel+toplama bazında gruplar
-    ve kayıtlara Trendyol Sipariş sayısı olarak GÜNCELLER (üzerine yazar).
+    BEKLEMEDE siparişleri Toplama bazında gruplar ve her Toplama için
+    personel_id=NULL ile kayıt oluşturur (personel sonradan manuel atanır).
     BEKLEMEDE siparişleri TAMAMLANDI olarak işaretler.
     """
     try:
@@ -227,50 +230,47 @@ def senkronize_et():
 
         tarih_db = tarih_obj.strftime('%d.%m.%Y')
 
-        # Seçili tarihin BEKLEMEDE ve TAMAMLANDI siparişlerini al
-        query = Order.query.filter(
-            Order.durum.in_(['BEKLEMEDE', 'TAMAMLANDI']),
+        # Seçili tarihin BEKLEMEDE siparişlerini al
+        siparisler = Order.query.filter(
+            Order.durum == 'BEKLEMEDE',
             sqlfunc.date(Order.tarih) == tarih_obj.strftime('%Y-%m-%d'),
-        )
-        siparisler = query.all()
+        ).all()
 
         if not siparisler:
             return jsonify({
                 'basarili': True,
-                'mesaj': f'{tarih_db} tarihinde senkronize edilecek sipariş bulunamadı.',
+                'mesaj': f'{tarih_db} tarihinde senkronize edilecek BEKLEMEDE sipariş bulunamadı.',
                 'yeni': 0,
                 'guncellendi': 0,
             })
 
-        # Personel+Toplama bazında sayıları topla (personel_id olan siparişler için)
+        # Toplama bazında sayıları topla
         gruplar = {}
         for s in siparisler:
-            if not s.personel_id:
-                continue
-            key = (s.personel_id, s.toplama_id)
-            gruplar[key] = gruplar.get(key, 0) + 1
+            toplama_id = s.toplama_id
+            gruplar[toplama_id] = gruplar.get(toplama_id, 0) + 1
 
         yeni = 0
         guncellendi = 0
         now = datetime.now()
 
-        for (personel_id, toplama_id), siparis_sayisi in gruplar.items():
+        for toplama_id, siparis_sayisi in gruplar.items():
+            # Aynı tarih+toplama ile personel=NULL kayıt var mı?
             kayit = Kayit.query.filter_by(
                 tarih=tarih_db,
-                personel_id=personel_id,
                 toplama_id=toplama_id,
+                personel_id=None,
             ).first()
 
             if kayit:
-                # Üzerine yaz (re-sync desteği)
-                kayit.trendyol_siparis = siparis_sayisi
+                kayit.trendyol_siparis = (kayit.trendyol_siparis or 0) + siparis_sayisi
                 kayit.senkronizasyon_sayisi = (kayit.senkronizasyon_sayisi or 0) + 1
                 kayit.son_senkronizasyon = now
                 guncellendi += 1
             else:
                 kayit = Kayit(
                     tarih=tarih_db,
-                    personel_id=personel_id,
+                    personel_id=None,
                     toplama_id=toplama_id,
                     trendyol_siparis=siparis_sayisi,
                     trendyol_fatura=0,
@@ -283,12 +283,11 @@ def senkronize_et():
                 db.session.flush()
                 yeni += 1
 
-        # BEKLEMEDE siparişlerini TAMAMLANDI olarak işaretle
+        # BEKLEMEDE siparişleri TAMAMLANDI yap
         for s in siparisler:
-            if s.durum == 'BEKLEMEDE':
-                s.durum = 'TAMAMLANDI'
-                s.senkronize_edildi = True
-                s.senkronize_tarihi = now
+            s.durum = 'TAMAMLANDI'
+            s.senkronize_edildi = True
+            s.senkronize_tarihi = now
 
         db.session.commit()
         log_audit('senkronizasyon', 'kayitlar', None,
@@ -296,7 +295,7 @@ def senkronize_et():
 
         return jsonify({
             'basarili': True,
-            'mesaj': f'{yeni} yeni kayıt oluşturuldu, {guncellendi} kayıt güncellendi.',
+            'mesaj': f'{yeni} yeni kayıt oluşturuldu, {guncellendi} kayıt güncellendi. Personel alanı boş bırakıldı.',
             'yeni': yeni,
             'guncellendi': guncellendi,
         })
@@ -313,26 +312,24 @@ def _senkronize_upload(upload_id):
     siparisler = Order.query.filter_by(
         excel_yukleme_id=upload_id,
         senkronize_edildi=False,
-    ).all()
+    ).filter(Order.durum == 'BEKLEMEDE').all()
 
     if not siparisler:
-        return {'basarili': True, 'mesaj': 'Senkronize edilecek sipariş bulunamadı.', 'yeni': 0, 'guncellendi': 0}
+        return {'basarili': True, 'mesaj': 'Senkronize edilecek BEKLEMEDE sipariş bulunamadı.', 'yeni': 0, 'guncellendi': 0}
 
     gruplar = {}
     for s in siparisler:
-        if not s.personel_id:
-            continue
-        key = (s.personel_id, s.toplama_id)
-        gruplar[key] = gruplar.get(key, 0) + 1
+        toplama_id = s.toplama_id
+        gruplar[toplama_id] = gruplar.get(toplama_id, 0) + 1
 
     yeni = 0
     guncellendi = 0
 
-    for (personel_id, toplama_id), siparis_sayisi in gruplar.items():
+    for toplama_id, siparis_sayisi in gruplar.items():
         kayit = Kayit.query.filter_by(
             tarih=tarih_db,
-            personel_id=personel_id,
             toplama_id=toplama_id,
+            personel_id=None,
         ).first()
 
         if kayit:
@@ -343,7 +340,7 @@ def _senkronize_upload(upload_id):
         else:
             kayit = Kayit(
                 tarih=tarih_db,
-                personel_id=personel_id,
+                personel_id=None,
                 toplama_id=toplama_id,
                 trendyol_siparis=siparis_sayisi,
                 trendyol_fatura=0,
@@ -358,9 +355,9 @@ def _senkronize_upload(upload_id):
 
     now = datetime.now()
     for s in siparisler:
-        if s.personel_id:
-            s.senkronize_edildi = True
-            s.senkronize_tarihi = now
+        s.senkronize_edildi = True
+        s.senkronize_tarihi = now
+        s.durum = 'TAMAMLANDI'
 
     db.session.commit()
     return {

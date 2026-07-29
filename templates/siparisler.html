@@ -95,12 +95,6 @@ tr.row-tamamlandi td { background:#F5FFF6 !important; }
         </select>
       </div>
       <div class="col-6 col-md-2">
-        <label class="form-label small mb-1">Personel</label>
-        <select class="form-select form-select-sm" id="fPersonel">
-          <option value="">Tümü</option>
-        </select>
-      </div>
-      <div class="col-6 col-md-2">
         <label class="form-label small mb-1">Durum</label>
         <select class="form-select form-select-sm" id="fDurum">
           <option value="">Tümü</option>
@@ -146,13 +140,12 @@ tr.row-tamamlandi td { background:#F5FFF6 !important; }
             <th>Beden</th>
             <th>Adet</th>
             <th>Toplama</th>
-            <th>Personel</th>
             <th>Durum</th>
             <th style="width:90px">İşlem</th>
           </tr>
         </thead>
         <tbody id="ordersBody">
-          <tr><td colspan="10" class="text-center py-4 text-muted">Yükleniyor...</td></tr>
+          <tr><td colspan="9" class="text-center py-4 text-muted">Yükleniyor...</td></tr>
         </tbody>
       </table>
     </div>
@@ -198,7 +191,7 @@ tr.row-tamamlandi td { background:#F5FFF6 !important; }
       <div class="modal-body">
         <div class="alert alert-info small mb-2">
           <strong>Sütunlar (sırasıyla):</strong>
-          Siparis No | Tarih | Urun Kodu | Beden | Adet | Toplama | Personel
+          Siparis No | Tarih | Urun Kodu | Beden | Adet | Toplama
         </div>
         <div class="alert alert-warning small mb-2">
           ⚠ Hatalı satırlar <strong>HATALI</strong> olarak kaydedilir, işlem durdurulamaz.<br>
@@ -255,10 +248,6 @@ tr.row-tamamlandi td { background:#F5FFF6 !important; }
             <label class="form-label small">Toplama</label>
             <select class="form-select form-select-sm" id="sipDuzenleToplama"></select>
           </div>
-          <div class="col-12">
-            <label class="form-label small">Personel <span class="text-muted">(isteğe bağlı)</span></label>
-            <select class="form-select form-select-sm" id="sipDuzenlePersonel"></select>
-          </div>
         </div>
         <div id="sipDuzenleHata" class="alert alert-danger mt-3 d-none small"></div>
       </div>
@@ -279,13 +268,7 @@ tr.row-tamamlandi td { background:#F5FFF6 !important; }
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
-        <p class="text-muted small">Seçili siparişlerin Personel veya Toplama alanını değiştirin. Boş bırakılan alanlar değiştirilmez.</p>
-        <div class="mb-3">
-          <label class="form-label small">Personel</label>
-          <select class="form-select form-select-sm" id="topluPersonel">
-            <option value="">Değiştirme</option>
-          </select>
-        </div>
+        <p class="text-muted small">Seçili siparişlerin Toplama alanını değiştirin.</p>
         <div class="mb-3">
           <label class="form-label small">Toplama</label>
           <select class="form-select form-select-sm" id="topluToplama">
@@ -308,9 +291,9 @@ initUploadZone('sipUploadZone', 'sipExcelFile');
 
 let currentPage = 1;
 let selectedIds = new Set();
-let metaData = { toplamalar: [], personeller: [] };
+let metaData = { toplamalar: [] };
 
-// ── Meta Yükle (Toplamalar / Personeller) ─────────────────────
+// ── Meta Yükle (Toplamalar) ─────────────────────────────────────
 async function loadMeta() {
   const { data } = await apiFetch('/siparisler/api/meta');
   if (!data.basarili) return;
@@ -318,26 +301,16 @@ async function loadMeta() {
 
   // Filter dropdowns
   const fT = document.getElementById('fToplama');
-  const fP = document.getElementById('fPersonel');
   data.toplamalar.forEach(t => fT.add(new Option(t.ad, t.id)));
-  data.personeller.forEach(p => fP.add(new Option(p.ad, p.id)));
 
   // Edit modal dropdowns
   const dt = document.getElementById('sipDuzenleToplama');
-  const dp = document.getElementById('sipDuzenlePersonel');
   const tt = document.getElementById('topluToplama');
-  const tp = document.getElementById('topluPersonel');
   dt.innerHTML = '<option value="">— Seç —</option>';
-  dp.innerHTML = '<option value="">— Personel yok —</option>';
   tt.innerHTML = '<option value="">Değiştirme</option>';
-  tp.innerHTML = '<option value="">Değiştirme</option>';
   data.toplamalar.forEach(t => {
     dt.add(new Option(t.ad, t.id));
     tt.add(new Option(t.ad, t.id));
-  });
-  data.personeller.forEach(p => {
-    dp.add(new Option(p.ad, p.id));
-    tp.add(new Option(p.ad, p.id));
   });
 }
 
@@ -362,13 +335,12 @@ function buildFilterParams() {
   if (v('fSiparisNo')) p.set('siparis_no', v('fSiparisNo'));
   if (v('fUrunKodu'))  p.set('urun_kodu', v('fUrunKodu'));
   if (v('fToplama'))   p.set('toplama_id', v('fToplama'));
-  if (v('fPersonel'))  p.set('personel_id', v('fPersonel'));
   if (v('fDurum'))     p.set('durum', v('fDurum'));
   return p;
 }
 
 function clearFilters() {
-  ['fTarihBasla','fTarihBitis','fSiparisNo','fUrunKodu','fToplama','fPersonel','fDurum'].forEach(id => {
+  ['fTarihBasla','fTarihBitis','fSiparisNo','fUrunKodu','fToplama','fDurum'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
@@ -405,7 +377,7 @@ async function loadOrders(page = 1) {
   document.getElementById('totalCount').textContent = `Toplam: ${data.toplam} kayıt`;
 
   if (!data.kayitlar.length) {
-    tbody.innerHTML = '<tr><td colspan="10" class="text-center py-4 text-muted">Kayıt bulunamadı</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" class="text-center py-4 text-muted">Kayıt bulunamadı</td></tr>';
     document.getElementById('ordersPagination').innerHTML = '';
     return;
   }
@@ -422,7 +394,6 @@ async function loadOrders(page = 1) {
       <td class="small">${escHtml(row.beden || '-')}</td>
       <td>${row.adet}</td>
       <td class="small">${escHtml(row.toplama || '-')}</td>
-      <td class="small">${escHtml(row.personel || '-')}</td>
       <td>${durumBadge(row.durum, row.hata_sebebi)}</td>
       <td>
         <button class="btn btn-xs btn-warning" onclick="openSipDuzenle(${row.id})" title="Düzenle">✏️</button>
@@ -528,7 +499,6 @@ async function openSipDuzenle(id) {
   document.getElementById('sipDuzenleBeden').value = s.beden || '';
   document.getElementById('sipDuzenleAdet').value = s.adet;
   document.getElementById('sipDuzenleToplama').value = s.toplama_id || '';
-  document.getElementById('sipDuzenlePersonel').value = s.personel_id || '';
   document.getElementById('sipDuzenleHata').classList.add('d-none');
   new bootstrap.Modal(document.getElementById('sipDuzenleModal')).show();
 }
@@ -541,7 +511,6 @@ async function sipGuncelle() {
     beden: document.getElementById('sipDuzenleBeden').value,
     adet: document.getElementById('sipDuzenleAdet').value,
     toplama_id: document.getElementById('sipDuzenleToplama').value,
-    personel_id: document.getElementById('sipDuzenlePersonel').value || null,
   };
   setLoading(true);
   const { data } = await apiFetch(`/siparisler/api/${id}`, {
@@ -593,12 +562,10 @@ async function topluSil() {
 }
 
 async function topluGuncelle() {
-  const personel_id = document.getElementById('topluPersonel').value;
   const toplama_id = document.getElementById('topluToplama').value;
-  if (!personel_id && !toplama_id) { showAlert('warning', 'En az bir alan seçin'); return; }
+  if (!toplama_id) { showAlert('warning', 'Toplama seçin'); return; }
 
   const payload = { ids: [...selectedIds] };
-  if (personel_id) payload.personel_id = personel_id;
   if (toplama_id)  payload.toplama_id  = toplama_id;
 
   setLoading(true);

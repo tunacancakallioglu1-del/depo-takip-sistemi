@@ -24,7 +24,7 @@ class Personel(db.Model):
     eklenme_tarihi = db.Column(db.DateTime, default=datetime.now)
 
     # İlişkiler
-    kayitlar = db.relationship('Kayit', backref='personel', lazy=True, cascade='all, delete-orphan')
+    kayitlar = db.relationship('Kayit', backref='personel', lazy=True)
 
     def __repr__(self):
         return f'<Personel {self.ad}>'
@@ -65,7 +65,7 @@ class Kayit(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     tarih = db.Column(db.String(10), nullable=False)
-    personel_id = db.Column(db.Integer, db.ForeignKey('personeller.id'), nullable=False)
+    personel_id = db.Column(db.Integer, db.ForeignKey('personeller.id'), nullable=True)
     toplama_id = db.Column(db.Integer, db.ForeignKey('toplamalar.id'), nullable=False)
     trendyol_siparis = db.Column(db.Float, default=0)
     trendyol_fatura = db.Column(db.Float, default=0)
@@ -82,7 +82,7 @@ class Kayit(db.Model):
         return {
             'id': self.id,
             'tarih': self.tarih,
-            'personel': self.personel.ad,
+            'personel': self.personel.ad if self.personel else '',
             'personel_id': self.personel_id,
             'toplama': self.toplama.ad,
             'toplama_id': self.toplama_id,
@@ -356,13 +356,49 @@ def veritabani_migrasyonu():
             elif 'hata_sebebi' not in orders_cols:
                 conn.execute(text('ALTER TABLE orders ADD COLUMN hata_sebebi TEXT'))
 
-        # kayitlar tablosuna yeni sütunlar ekle
+        # kayitlar tablosuna yeni sütunlar ekle + personel_id nullable yap
         if 'kayitlar' in existing_tables:
             kayit_cols = [c['name'] for c in inspector.get_columns('kayitlar')]
             if 'senkronizasyon_sayisi' not in kayit_cols:
                 conn.execute(text('ALTER TABLE kayitlar ADD COLUMN senkronizasyon_sayisi INTEGER DEFAULT 0 NOT NULL'))
             if 'son_senkronizasyon' not in kayit_cols:
                 conn.execute(text('ALTER TABLE kayitlar ADD COLUMN son_senkronizasyon DATETIME'))
+            # Personel_id'yi nullable hale getir (SQLite'da tablo yeniden oluşturularak yapılır)
+            # Mevcut sütunun nullable olup olmadığını kontrol et
+            kayit_col_defs = {c['name']: c for c in inspector.get_columns('kayitlar')}
+            personel_col = kayit_col_defs.get('personel_id', {})
+            if personel_col.get('nullable') is False:
+                has_senk = 'senkronizasyon_sayisi' in kayit_cols
+                has_son = 'son_senkronizasyon' in kayit_cols
+                conn.execute(text('''
+                    CREATE TABLE kayitlar_new (
+                        id INTEGER NOT NULL PRIMARY KEY,
+                        tarih VARCHAR(10) NOT NULL,
+                        personel_id INTEGER REFERENCES personeller(id),
+                        toplama_id INTEGER NOT NULL REFERENCES toplamalar(id),
+                        trendyol_siparis FLOAT DEFAULT 0,
+                        trendyol_fatura FLOAT DEFAULT 0,
+                        diger_pazar FLOAT DEFAULT 0,
+                        not_alan TEXT DEFAULT '',
+                        eklenme_tarihi DATETIME,
+                        senkronizasyon_sayisi INTEGER NOT NULL DEFAULT 0,
+                        son_senkronizasyon DATETIME
+                    )
+                '''))
+                senk_col = 'senkronizasyon_sayisi' if has_senk else '0'
+                son_col = 'son_senkronizasyon' if has_son else 'NULL'
+                conn.execute(text(f'''
+                    INSERT INTO kayitlar_new
+                        (id, tarih, personel_id, toplama_id, trendyol_siparis,
+                         trendyol_fatura, diger_pazar, not_alan, eklenme_tarihi,
+                         senkronizasyon_sayisi, son_senkronizasyon)
+                    SELECT id, tarih, personel_id, toplama_id, trendyol_siparis,
+                           trendyol_fatura, diger_pazar, not_alan, eklenme_tarihi,
+                           {senk_col}, {son_col}
+                    FROM kayitlar
+                '''))
+                conn.execute(text('DROP TABLE kayitlar'))
+                conn.execute(text('ALTER TABLE kayitlar_new RENAME TO kayitlar'))
 
         # excel_uploads tablosuna yeni sütunlar ekle
         if 'excel_uploads' in existing_tables:
@@ -428,7 +464,7 @@ def toplama_sil(id):
     return {'basarili': True, 'mesaj': 'Toplama silindi!'}
 
 
-def kayit_ekle(tarih, personel_id, toplama_id, trendyol_siparis=0,
+def kayit_ekle(tarih, toplama_id, personel_id=None, trendyol_siparis=0,
                trendyol_fatura=0, diger_pazar=0, not_alan=''):
     """Yeni kayıt ekle"""
 
@@ -448,7 +484,7 @@ def kayit_ekle(tarih, personel_id, toplama_id, trendyol_siparis=0,
     return {'basarili': True, 'mesaj': 'Kayıt başarıyla eklendi!', 'id': kayit.id}
 
 
-def kayit_guncelle(id, tarih, personel_id, toplama_id, trendyol_siparis=0,
+def kayit_guncelle(id, tarih, toplama_id, personel_id=None, trendyol_siparis=0,
                    trendyol_fatura=0, diger_pazar=0, not_alan=''):
     """Kayıt güncelle"""
 
