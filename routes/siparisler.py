@@ -418,6 +418,67 @@ def api_toplu_guncelle():
     return jsonify({'basarili': True, 'mesaj': f'{guncellenen} sipariş güncellendi'})
 
 
+@siparisler_bp.route('/api/grup-sil', methods=['POST'])
+def api_grup_sil():
+    """Aynı sipariş no'suna sahip tüm siparişleri sil"""
+    data = request.json or {}
+    siparis_no = str(data.get('siparis_no', '')).strip()
+    if not siparis_no:
+        return jsonify({'basarili': False, 'mesaj': 'Sipariş No gerekli'})
+    silinen = Order.query.filter(Order.siparis_no == siparis_no).delete(synchronize_session=False)
+    db.session.commit()
+    log_audit('grup_sil', 'orders', None, yeni_deger={'siparis_no': siparis_no, 'silinen': silinen})
+    return jsonify({'basarili': True, 'mesaj': f'{silinen} sipariş silindi'})
+
+
+@siparisler_bp.route('/api/grup-revalidate', methods=['POST'])
+def api_grup_revalidate():
+    """Aynı sipariş no'suna sahip HATALI siparişleri yeniden doğrula"""
+    data = request.json or {}
+    siparis_no = str(data.get('siparis_no', '')).strip()
+    if not siparis_no:
+        return jsonify({'basarili': False, 'mesaj': 'Sipariş No gerekli'})
+
+    orders = Order.query.filter(
+        Order.siparis_no == siparis_no,
+        Order.durum == 'HATALI',
+    ).all()
+
+    if not orders:
+        return jsonify({'basarili': False, 'mesaj': 'Bu grupta HATALI sipariş bulunamadı'})
+
+    duzeltilen = 0
+    hatali_kalan = 0
+    for order in orders:
+        errors = _check_order(
+            siparis_no=order.siparis_no,
+            tarih=order.tarih,
+            urun_id=order.urun_id,
+            urun_kodu_ham=order.urun_kodu_ham,
+            beden=order.beden,
+            adet=order.adet,
+            toplama_id=order.toplama_id,
+            product=order.urun,
+        )
+        if errors:
+            order.hata_sebebi = '; '.join(errors)
+            hatali_kalan += 1
+        else:
+            order.durum = 'BEKLEMEDE'
+            order.hata_sebebi = None
+            duzeltilen += 1
+
+    db.session.commit()
+    log_audit('grup_revalidate', 'orders', None,
+              yeni_deger={'siparis_no': siparis_no, 'duzeltilen': duzeltilen, 'hatali_kalan': hatali_kalan})
+
+    if duzeltilen:
+        mesaj = f'{duzeltilen} sipariş BEKLEMEDE oldu' + (f', {hatali_kalan} hata devam ediyor' if hatali_kalan else '')
+    else:
+        mesaj = f'Hatalar devam ediyor ({hatali_kalan} sipariş)'
+    return jsonify({'basarili': True, 'duzeltilen': duzeltilen, 'hatali_kalan': hatali_kalan, 'mesaj': mesaj})
+
+
 @siparisler_bp.route('/api/gecmis')
 def api_gecmis():
     uploads = ExcelUpload.query.filter_by(modul='siparis').order_by(

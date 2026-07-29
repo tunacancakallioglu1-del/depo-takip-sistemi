@@ -506,13 +506,38 @@ def kayit_guncelle(id, tarih, toplama_id, personel_id=None, trendyol_siparis=0,
 
 
 def kayit_sil(id):
-    """Kayıt sil"""
+    """Kayıt sil — ilgili TAMAMLANDI siparişleri BEKLEMEDE'ye döndür"""
+    from datetime import datetime as _dt, time as _time
 
     kayit = Kayit.query.get(id)
     if not kayit:
         return {'basarili': False, 'mesaj': 'Kayıt bulunamadı!'}
 
+    # İlgili TAMAMLANDI siparişleri BEKLEMEDE'ye döndür
+    geri_donen = 0
+    try:
+        tarih_obj = _dt.strptime(kayit.tarih, '%d.%m.%Y').date()
+        tarih_start = _dt.combine(tarih_obj, _time.min)
+        tarih_end = _dt.combine(tarih_obj, _time.max)
+
+        siparisler = Order.query.filter(
+            Order.durum == 'TAMAMLANDI',
+            Order.toplama_id == kayit.toplama_id,
+            Order.tarih >= tarih_start,
+            Order.tarih <= tarih_end,
+        ).all()
+
+        for s in siparisler:
+            s.durum = 'BEKLEMEDE'
+            s.senkronize_edildi = False
+            s.senkronize_tarihi = None
+        geri_donen = len(siparisler)
+    except (ValueError, AttributeError):
+        pass
+
     db.session.delete(kayit)
     db.session.commit()
 
+    if geri_donen:
+        return {'basarili': True, 'mesaj': f'Kayıt silindi! {geri_donen} sipariş BEKLEMEDE durumuna döndürüldü.'}
     return {'basarili': True, 'mesaj': 'Kayıt silindi!'}
