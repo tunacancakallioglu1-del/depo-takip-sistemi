@@ -1,10 +1,10 @@
 {% extends 'base.html' %}
-{% block title %}Dashboard — Depo Operasyon{% endblock %}
+{% block title %}Ana Sayfa — Depo Operasyon{% endblock %}
 {% block content %}
 
 <!-- Page Header -->
 <div class="page-header mb-4">
-  <h1 class="page-title">🏠 Dashboard</h1>
+  <h1 class="page-title">🏠 Ana Sayfa</h1>
   <span class="badge bg-success pulse">● Canlı</span>
 </div>
 
@@ -88,6 +88,22 @@
 
         <!-- EKLE PANEL -->
         <div id="panelEkle">
+          <!-- Menü -->
+          <div class="mb-2">
+            <button class="btn btn-sm btn-outline-secondary w-100 text-start d-flex justify-content-between"
+                    onclick="toggleCategory('catMenu')">
+              <span>📚 Menü</span><span id="iconCatMenu">▼</span>
+            </button>
+            <div id="catMenu" class="ps-2 pt-1">
+              <div class="form-check"><input class="form-check-input ekle-check" type="checkbox" data-type="menu" data-id="siparisler" data-ad="Siparişler" id="ckMenuSip"><label class="form-check-label small" for="ckMenuSip">Siparişler</label></div>
+              <div class="form-check"><input class="form-check-input ekle-check" type="checkbox" data-type="menu" data-id="takip" data-ad="Takip" id="ckMenuTakip"><label class="form-check-label small" for="ckMenuTakip">Takip</label></div>
+              <div class="form-check"><input class="form-check-input ekle-check" type="checkbox" data-type="menu" data-id="toplamalar" data-ad="Toplamalar" id="ckMenuTop"><label class="form-check-label small" for="ckMenuTop">Toplamalar</label></div>
+              <div class="form-check"><input class="form-check-input ekle-check" type="checkbox" data-type="menu" data-id="iadeler" data-ad="İadeler" id="ckMenuIade"><label class="form-check-label small" for="ckMenuIade">İadeler</label></div>
+              <div class="form-check"><input class="form-check-input ekle-check" type="checkbox" data-type="menu" data-id="raporlar" data-ad="Raporlar" id="ckMenuRapor"><label class="form-check-label small" for="ckMenuRapor">Raporlar</label></div>
+              <div class="form-check"><input class="form-check-input ekle-check" type="checkbox" data-type="menu" data-id="yukleme-gecmisi" data-ad="Yükleme Geçmişi" id="ckMenuYuk"><label class="form-check-label small" for="ckMenuYuk">Yükleme Geçmişi</label></div>
+              <div class="form-check"><input class="form-check-input ekle-check" type="checkbox" data-type="menu" data-id="ayarlar" data-ad="Ayarlar" id="ckMenuAyar"><label class="form-check-label small" for="ckMenuAyar">Ayarlar</label></div>
+            </div>
+          </div>
           <!-- Toplamalar -->
           <div class="mb-2">
             <button class="btn btn-sm btn-outline-secondary w-100 text-start d-flex justify-content-between"
@@ -179,7 +195,7 @@
 <div class="row g-3">
   <div class="col-md-6">
     <div class="card">
-      <div class="card-header">📅 Günlük Bölüm</div>
+      <div class="card-header">📅 Takip Bölümü</div>
       <div class="card-body">
         <div class="row g-2">
           <div class="col-6">
@@ -200,7 +216,7 @@
   </div>
   <div class="col-md-6">
     <div class="card">
-      <div class="card-header">📊 Günlük İşlemler</div>
+      <div class="card-header">📊 Operasyon İşlemleri</div>
       <div class="card-body">
         <div class="row g-2">
           <div class="col-6">
@@ -279,7 +295,7 @@ function renderCikarListesi() {
     return;
   }
 
-  const typeIcons = { toplama: '📦', personel: '👥', urun: '📝', beden: '📐' };
+  const typeIcons = { menu: '📚', toplama: '📦', personel: '👥', urun: '📝', beden: '📐' };
   container.innerHTML = list.map((item, idx) => `
     <div class="d-flex align-items-center justify-content-between py-1 border-bottom">
       <div class="d-flex align-items-center gap-2">
@@ -320,4 +336,3 @@ setInterval(async () => {
 }, 30000);
 </script>
 {% endblock %}
-

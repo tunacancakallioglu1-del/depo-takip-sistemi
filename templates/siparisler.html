@@ -3,7 +3,7 @@
 {% block content %}
 
 <div class="page-header">
-  <h1 class="page-title">🛒 Sipariş Yönetimi</h1>
+  <h1 class="page-title">🛒 Siparişler (Havuz)</h1>
   <div class="d-flex gap-2 flex-wrap">
     <a href="/siparisler/api/template" class="btn btn-success btn-sm">📥 Şablon İndir</a>
     <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#sipExcelModal">📤 Excel Yükle</button>
@@ -17,15 +17,44 @@
 <!-- Filters -->
 <div class="card mb-3">
   <div class="card-body py-2">
-    <div class="row g-2 align-items-center">
-      <div class="col-auto">
+    <div class="row g-2 align-items-end">
+      <div class="col-md-2">
+        <label class="form-label small mb-1">Sipariş No</label>
         <input type="text" class="form-control form-control-sm" id="filterSipNo" placeholder="Sipariş No...">
       </div>
-      <div class="col-auto">
-        <button class="btn btn-sm btn-primary" onclick="loadOrders(1)">🔍 Ara</button>
-        <button class="btn btn-sm btn-outline-secondary" onclick="clearFilters()">✕ Temizle</button>
+      <div class="col-md-2">
+        <label class="form-label small mb-1">Tarih</label>
+        <input type="date" class="form-control form-control-sm" id="filterTarih">
       </div>
-      <div class="col-auto ms-auto">
+      <div class="col-md-2">
+        <label class="form-label small mb-1">Ürün Kodu</label>
+        <input type="text" class="form-control form-control-sm" id="filterUrunKodu" placeholder="TER0101">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small mb-1">Toplama</label>
+        <select class="form-select form-select-sm" id="filterToplama">
+          <option value="">Tümü</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small mb-1">Personel</label>
+        <select class="form-select form-select-sm" id="filterPersonel">
+          <option value="">Tümü</option>
+          <option value="null">Belirtilmemiş</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small mb-1">Durum</label>
+        <select class="form-select form-select-sm" id="filterDurum">
+          <option value="">Tümü</option>
+          <option value="BEKLEMEDE">⚪ Beklemede</option>
+          <option value="TAMAMLANDI">🟢 Tamamlandı</option>
+        </select>
+      </div>
+      <div class="col-md-12 d-flex gap-2">
+        <button class="btn btn-sm btn-primary" onclick="loadOrders(1)">🔍 Filtrele</button>
+        <button class="btn btn-sm btn-outline-secondary" onclick="clearFilters()">✕ Temizle</button>
+        <button class="btn btn-sm btn-outline-info ms-auto" onclick="openBulkModal()">🧩 Toplu Düzenle</button>
         <span class="text-muted small" id="totalCount">Yükleniyor...</span>
       </div>
     </div>
@@ -39,7 +68,7 @@
       <table class="table mb-0">
         <thead>
           <tr>
-            <th>#</th>
+            <th><input class="form-check-input" type="checkbox" id="selectAllOrders"></th>
             <th>Sipariş No</th>
             <th>Tarih</th>
             <th>Ürün Kodu</th>
@@ -74,7 +103,7 @@
           Siparis No | Tarih | Urun Kodu | Beden | Adet | Kargo Kodu | Termin Tarihi | Personel
         </div>
         <div class="alert alert-warning small">
-          ⚠ Aynı sipariş numarasına ait birden fazla satır <strong>1 sipariş</strong> olarak sayılır.<br>
+          ⚠ Sipariş No eşsizdir: aynı sipariş numarası ikinci kez yüklenemez.<br>
           ⚠ Hatalı satırlar işlemi durdurmaz, raporlanır.
         </div>
         <div class="upload-zone" id="sipUploadZone">
@@ -104,6 +133,20 @@
       <div class="modal-body">
         <input type="hidden" id="sipDuzenleId">
         <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">Tarih</label>
+            <input type="date" class="form-control" id="sipDuzenleTarih">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Toplama</label>
+            <select class="form-select" id="sipDuzenleToplama"></select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Personel</label>
+            <select class="form-select" id="sipDuzenlePersonel">
+              <option value="">Belirtilmemiş</option>
+            </select>
+          </div>
           <div class="col-md-4">
             <label class="form-label">Beden</label>
             <input type="text" class="form-control" id="sipDuzenleBeden">
@@ -115,9 +158,8 @@
           <div class="col-md-4">
             <label class="form-label">Durum</label>
             <select class="form-select" id="sipDuzenleDurum">
-              <option>Yüklendi</option>
+              <option>Beklemede</option>
               <option>Tamamlandı</option>
-              <option>İptal</option>
             </select>
           </div>
         </div>
@@ -125,6 +167,51 @@
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
         <button type="button" class="btn btn-warning" onclick="sipGuncelle()">💾 Güncelle</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Toplu Düzenleme Modal ── -->
+<div class="modal fade" id="bulkModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">🧩 Toplu Düzenleme</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-info py-2 small">Seçili siparişlerde yalnız dolu alanlar güncellenir.</div>
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">Tarih</label>
+            <input type="date" class="form-control" id="bulkTarih">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Durum</label>
+            <select class="form-select" id="bulkDurum">
+              <option value="">Değiştirme</option>
+              <option value="Beklemede">Beklemede</option>
+              <option value="Tamamlandı">Tamamlandı</option>
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Toplama</label>
+            <select class="form-select" id="bulkToplama">
+              <option value="">Değiştirme</option>
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Personel</label>
+            <select class="form-select" id="bulkPersonel">
+              <option value="">Belirtilmemiş</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+        <button class="btn btn-primary" onclick="bulkUpdate()">Kaydet</button>
       </div>
     </div>
   </div>
@@ -150,16 +237,32 @@ initUploadZone('sipUploadZone', 'sipExcelFile');
 
 let currentPage = 1;
 let currentTotal = 0;
+let currentToplamalar = [];
+let currentPersoneller = [];
+let currentUploadFilter = '';
 
 // ── Load Orders ───────────────────────────────────────
 async function loadOrders(page = 1) {
   currentPage = page;
-  const sipNo = document.getElementById('filterSipNo').value.trim();
-  const { ok, data } = await apiFetch(`/siparisler/api/list?page=${page}&per_page=20`);
+  const params = new URLSearchParams({
+    page: String(page),
+    per_page: '20',
+    siparis_no: document.getElementById('filterSipNo').value.trim(),
+    tarih: document.getElementById('filterTarih').value,
+    urun_kodu: document.getElementById('filterUrunKodu').value.trim(),
+    toplama_id: document.getElementById('filterToplama').value,
+    personel_id: document.getElementById('filterPersonel').value,
+    durum: document.getElementById('filterDurum').value,
+    upload_id: currentUploadFilter,
+  });
+  const { ok, data } = await apiFetch(`/siparisler/api/list?${params.toString()}`);
   if (!ok) return;
 
   const tbody = document.getElementById('ordersBody');
   currentTotal = data.toplam;
+  currentToplamalar = data.toplamalar || [];
+  currentPersoneller = data.personeller || [];
+  hydrateFilterOptions();
   document.getElementById('totalCount').textContent = `Toplam: ${data.toplam} kayıt`;
 
   if (!data.kayitlar.length) {
@@ -170,7 +273,7 @@ async function loadOrders(page = 1) {
 
   tbody.innerHTML = data.kayitlar.map((row, i) => `
     <tr>
-      <td class="text-muted">${(page-1)*20 + i + 1}</td>
+      <td><input class="form-check-input row-check" type="checkbox" value="${row.id}"></td>
       <td><strong>${row.siparis_no}</strong></td>
       <td>${formatDate(row.tarih)}</td>
       <td><span class="badge bg-primary-soft text-primary">${row.urun_kodu || '-'}</span></td>
@@ -178,9 +281,9 @@ async function loadOrders(page = 1) {
       <td>${row.adet}</td>
       <td>${row.toplama || '-'}</td>
       <td>${row.personel || '-'}</td>
-      <td><span class="badge ${row.durum === 'Tamamlandı' ? 'bg-success' : 'bg-secondary'}">${row.durum || 'Yüklendi'}</span></td>
+      <td><span class="badge ${row.senkronize_edildi ? 'bg-success' : 'bg-secondary'}">${row.senkronize_edildi ? '🟢 TAMAMLANDI' : '⚪ BEKLEMEDE'}</span></td>
       <td>
-        <button class="btn btn-sm btn-warning" onclick="openSipDuzenle(${row.id}, '${row.beden||''}', ${row.adet}, '${row.durum||'Yüklendi'}')">✏️</button>
+        <button class="btn btn-sm btn-warning" onclick="openSipDuzenle(${row.id}, '${row.tarih}', ${row.toplama_id || 'null'}, ${row.personel_id || 'null'}, '${row.beden||''}', ${row.adet}, '${row.durum||'Beklemede'}')">✏️</button>
         <button class="btn btn-sm btn-danger" onclick="sipSil(${row.id})">🗑️</button>
       </td>
     </tr>`).join('');
@@ -191,6 +294,12 @@ async function loadOrders(page = 1) {
 
 function clearFilters() {
   document.getElementById('filterSipNo').value = '';
+  document.getElementById('filterTarih').value = '';
+  document.getElementById('filterUrunKodu').value = '';
+  document.getElementById('filterToplama').value = '';
+  document.getElementById('filterPersonel').value = '';
+  document.getElementById('filterDurum').value = '';
+  currentUploadFilter = '';
   loadOrders(1);
 }
 
@@ -233,6 +342,9 @@ async function sipExcelYukle() {
         ${data.tanimsiz_urunler.slice(0,5).map(u => `Satır ${u.satir}: ${u.kod}`).join(', ')}
         ${data.tanimsiz_urunler.length > 5 ? '...' : ''}
       </div>` : ''}`;
+    if (data.hatalar?.length) {
+      downloadErrorsCsv(data.hatalar);
+    }
     loadOrders(1);
   } else {
     res.innerHTML = `<div class="alert alert-danger">✗ ${data.mesaj}
@@ -242,8 +354,11 @@ async function sipExcelYukle() {
 }
 
 // ── Edit / Delete ─────────────────────────────────────
-function openSipDuzenle(id, beden, adet, durum) {
+function openSipDuzenle(id, tarih, toplamaId, personelId, beden, adet, durum) {
   document.getElementById('sipDuzenleId').value = id;
+  document.getElementById('sipDuzenleTarih').value = tarih;
+  fillSelectOptions('sipDuzenleToplama', currentToplamalar, toplamaId);
+  fillSelectOptions('sipDuzenlePersonel', currentPersoneller, personelId, true);
   document.getElementById('sipDuzenleBeden').value = beden;
   document.getElementById('sipDuzenleAdet').value = adet;
   document.getElementById('sipDuzenleDurum').value = durum;
@@ -257,6 +372,9 @@ async function sipGuncelle() {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
+      tarih: document.getElementById('sipDuzenleTarih').value,
+      toplama_id: document.getElementById('sipDuzenleToplama').value,
+      personel_id: document.getElementById('sipDuzenlePersonel').value,
       beden: document.getElementById('sipDuzenleBeden').value,
       adet: document.getElementById('sipDuzenleAdet').value,
       durum: document.getElementById('sipDuzenleDurum').value,
@@ -307,9 +425,13 @@ async function loadGecmis() {
             : '<span class="badge bg-warning text-dark">Bekliyor</span>'}
         </td>
         <td>
-          ${g.durum !== 'KONTROL_EDILDI'
-            ? `<button class="btn btn-sm btn-success" onclick="kontrolEt(${g.id}, this)">✔ Kontrol Edildi</button>`
-            : '<span class="text-muted small">—</span>'}
+          <div class="d-flex gap-1 flex-wrap">
+            <button class="btn btn-sm btn-outline-primary" onclick="duzenleUpload(${g.id})">✏️ Düzenle</button>
+            <button class="btn btn-sm btn-outline-danger" onclick="silUpload(${g.id})">🗑️ Sil</button>
+            ${g.durum !== 'KONTROL_EDILDI'
+              ? `<button class="btn btn-sm btn-success" onclick="kontrolEt(${g.id}, this)">✔ Kontrol</button>`
+              : ''}
+          </div>
         </td>
       </tr>`).join('')}</tbody>
     </table>`;
@@ -331,8 +453,116 @@ async function kontrolEt(uploadId, btn) {
   }
 }
 
+function duzenleUpload(uploadId) {
+  currentUploadFilter = String(uploadId);
+  bootstrap.Modal.getInstance(document.getElementById('gecmisModal'))?.hide();
+  showAlert('info', 'Seçili yüklemenin siparişleri listelendi.');
+  loadOrders(1);
+}
+
+async function silUpload(uploadId) {
+  confirmAction('Bu yükleme geçmişi ve bağlı siparişler silinsin mi?', async () => {
+    const { data } = await apiFetch(`/siparisler/api/upload/${uploadId}`, { method: 'DELETE' });
+    if (data.basarili) {
+      showAlert('success', data.mesaj);
+      loadGecmis();
+      loadOrders(1);
+    } else {
+      showAlert('danger', data.mesaj || 'Silme başarısız');
+    }
+  });
+}
+
+function hydrateFilterOptions() {
+  fillSelectOptions('filterToplama', currentToplamalar, document.getElementById('filterToplama').value, false, true);
+  fillSelectOptions('filterPersonel', currentPersoneller, document.getElementById('filterPersonel').value, true, true);
+}
+
+function fillSelectOptions(id, items, selectedValue, includeNull = false, preserveFirst = false) {
+  const el = document.getElementById(id);
+  const preserved = preserveFirst ? [...el.options].slice(0, includeNull ? 2 : 1).map(o => ({ value: o.value, text: o.textContent })) : [];
+  el.innerHTML = '';
+  preserved.forEach(opt => {
+    const o = document.createElement('option');
+    o.value = opt.value;
+    o.textContent = opt.text;
+    el.appendChild(o);
+  });
+  if (!preserveFirst && includeNull) {
+    const o = document.createElement('option');
+    o.value = '';
+    o.textContent = 'Belirtilmemiş';
+    el.appendChild(o);
+  }
+  items.forEach(item => {
+    const o = document.createElement('option');
+    o.value = item.id;
+    o.textContent = item.ad;
+    el.appendChild(o);
+  });
+  if (selectedValue !== null && selectedValue !== undefined) {
+    el.value = String(selectedValue);
+  }
+}
+
+function getSelectedIds() {
+  return [...document.querySelectorAll('.row-check:checked')].map(x => parseInt(x.value, 10));
+}
+
+function openBulkModal() {
+  const ids = getSelectedIds();
+  if (!ids.length) {
+    showAlert('warning', 'Toplu düzenleme için en az bir sipariş seçin.');
+    return;
+  }
+  fillSelectOptions('bulkToplama', currentToplamalar, '', false, true);
+  fillSelectOptions('bulkPersonel', currentPersoneller, '', true, true);
+  new bootstrap.Modal(document.getElementById('bulkModal')).show();
+}
+
+async function bulkUpdate() {
+  const ids = getSelectedIds();
+  if (!ids.length) return;
+  const payload = { ids };
+  const tarih = document.getElementById('bulkTarih').value;
+  const durum = document.getElementById('bulkDurum').value;
+  const toplama = document.getElementById('bulkToplama').value;
+  const personel = document.getElementById('bulkPersonel').value;
+  if (tarih) payload.tarih = tarih;
+  if (durum) payload.durum = durum;
+  if (toplama) payload.toplama_id = toplama;
+  payload.personel_id = personel;
+  const { data } = await apiFetch('/siparisler/api/bulk-update', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (data.basarili) {
+    showAlert('success', data.mesaj);
+    bootstrap.Modal.getInstance(document.getElementById('bulkModal')).hide();
+    loadOrders(currentPage);
+  } else {
+    showAlert('danger', data.mesaj);
+  }
+}
+
+document.getElementById('selectAllOrders').addEventListener('change', (e) => {
+  document.querySelectorAll('.row-check').forEach(c => { c.checked = e.target.checked; });
+});
+
+function downloadErrorsCsv(hatalar) {
+  const rows = ['Satir,Hata'];
+  hatalar.forEach(h => rows.push(`${h.satir},"${String(h.hata || '').replace(/"/g, '""')}"`));
+  const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `siparis_hata_raporu_${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 // Initial load
 loadOrders(1);
 </script>
 {% endblock %}
-

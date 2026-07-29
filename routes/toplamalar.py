@@ -87,6 +87,7 @@ def toplama_urun_ekle(toplama_id):
         aciklama=aciklama,
         toplama_id=toplama_id,
         beden_ayrimi=bool(data.get('beden_ayrimi', False)),
+        adet_tipi=str(data.get('adet_tipi', 'Karma')).strip() or 'Karma',
         durum=True,
         guncelleyen_kullanici='system',
     )
@@ -118,6 +119,8 @@ def toplama_urun_guncelle(product_id):
         product.beden_ayrimi = bool(data['beden_ayrimi'])
     if 'durum' in data:
         product.durum = bool(data['durum'])
+    if 'adet_tipi' in data:
+        product.adet_tipi = str(data['adet_tipi'] or 'Karma').strip() or 'Karma'
 
     product.guncelleyen_kullanici = 'system'
     log_audit('update', 'products', product.id, eski_deger=eski, yeni_deger=product.to_dict())
@@ -139,7 +142,7 @@ def toplama_urun_sil(product_id):
 @toplamalar_bp.route('/api/<int:toplama_id>/template')
 def toplama_template(toplama_id):
     """Toplama ürün şablonunu indir"""
-    headers = ['Urun Kodu', 'Marka', 'Aciklama', 'Beden Ayrimi', 'Bedenler']
+    headers = ['Urun Kodu', 'Marka', 'Aciklama', 'Adet Tipi', 'Beden Ayrimi', 'Bedenler']
     stream = build_template(headers)
     return send_file(
         stream,
@@ -165,7 +168,7 @@ def toplama_excel_yukle(toplama_id):
     except Exception:
         return jsonify({'basarili': False, 'mesaj': 'Excel okunamadı. Dosya formatını kontrol edin.'}), 400
 
-    expected = ['Urun Kodu', 'Marka', 'Aciklama', 'Beden Ayrimi', 'Bedenler']
+    expected = ['Urun Kodu', 'Marka', 'Aciklama', 'Adet Tipi', 'Beden Ayrimi', 'Bedenler']
     if headers != expected:
         return jsonify({
             'basarili': False,
@@ -191,6 +194,7 @@ def toplama_excel_yukle(toplama_id):
                 continue
 
             beden_ayrimi = str(row.get('Beden Ayrimi', '0')).strip().lower() in ('1', 'true', 'evet')
+            adet_tipi = str(row.get('Adet Tipi', 'Karma') or 'Karma').strip() or 'Karma'
             bedenler_raw = str(row.get('Bedenler', '') or '').strip()
             bedenler = [b.strip() for b in bedenler_raw.split(',') if b.strip()] if bedenler_raw else []
 
@@ -199,6 +203,7 @@ def toplama_excel_yukle(toplama_id):
                 marka=marka,
                 aciklama=aciklama,
                 toplama_id=toplama_id,
+                adet_tipi=adet_tipi,
                 beden_ayrimi=beden_ayrimi,
                 durum=True,
                 guncelleyen_kullanici='excel',

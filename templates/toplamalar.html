@@ -83,6 +83,14 @@
             <input type="text" class="form-control" id="urunAciklama" placeholder="Ürün açıklaması">
           </div>
           <div class="col-12">
+            <label class="form-label">Adet Tipi</label>
+            <select class="form-select" id="urunAdetTipi">
+              <option value="1 Adet">1 Adet</option>
+              <option value="1+ Adet">1+ Adet</option>
+              <option value="Karma" selected>Karma</option>
+            </select>
+          </div>
+          <div class="col-12">
             <div class="form-check">
               <input class="form-check-input" type="checkbox" id="bedenAyrimi" onchange="toggleBedenField()">
               <label class="form-check-label" for="bedenAyrimi">Beden Ayrımı Var</label>
@@ -113,7 +121,7 @@
       <div class="modal-body">
         <input type="hidden" id="excelToplamId">
         <div class="alert alert-info small">
-          Şablon formatı: <strong>Urun Kodu | Marka | Aciklama | Beden Ayrimi | Bedenler</strong>
+          Şablon formatı: <strong>Urun Kodu | Marka | Aciklama | Adet Tipi | Beden Ayrimi | Bedenler</strong>
         </div>
         <div class="upload-zone" id="toplamUploadZone">
           <div class="upload-zone-icon">📂</div>
@@ -149,6 +157,14 @@
           <div class="col-md-6">
             <label class="form-label">Açıklama</label>
             <input type="text" class="form-control" id="duzenleUrunAciklama">
+          </div>
+          <div class="col-12">
+            <label class="form-label">Adet Tipi</label>
+            <select class="form-select" id="duzenleUrunAdetTipi">
+              <option value="1 Adet">1 Adet</option>
+              <option value="1+ Adet">1+ Adet</option>
+              <option value="Karma">Karma</option>
+            </select>
           </div>
           <div class="col-12">
             <div class="form-check">
@@ -197,10 +213,11 @@ async function loadUrunler(toplamId) {
       <div>
         <span class="badge bg-primary-soft text-primary me-1">${u.ana_kod}</span>
         <span class="text-muted">${u.marka}</span>
+        <span class="badge bg-info text-dark ms-1" style="font-size:0.65rem">${u.adet_tipi || 'Karma'}</span>
         ${u.beden_ayrimi ? '<span class="badge bg-warning ms-1" style="font-size:0.65rem">BEDEN</span>' : ''}
       </div>
       <div class="d-flex gap-1">
-        <button class="btn btn-outline-warning" style="padding:1px 6px;font-size:0.7rem" onclick="openUrunDuzenle(${u.id},'${u.marka}','${u.aciklama}',${u.beden_ayrimi},${u.durum})">✏️</button>
+        <button class="btn btn-outline-warning" style="padding:1px 6px;font-size:0.7rem" onclick="openUrunDuzenle(${u.id},'${u.marka}','${u.aciklama}','${u.adet_tipi || 'Karma'}',${u.beden_ayrimi},${u.durum})">✏️</button>
         <button class="btn btn-outline-danger" style="padding:1px 6px;font-size:0.7rem" onclick="urunSil(${u.id},${toplamId})">🗑️</button>
       </div>
     </div>`).join('');
@@ -250,6 +267,7 @@ function openUrunEkle(toplamId, toplamAd) {
   document.getElementById('urunKod').value = '';
   document.getElementById('urunMarka').value = '';
   document.getElementById('urunAciklama').value = '';
+  document.getElementById('urunAdetTipi').value = 'Karma';
   document.getElementById('bedenAyrimi').checked = false;
   document.getElementById('bedenlerInput').value = '';
   document.getElementById('bedenlerField').style.display = 'none';
@@ -266,6 +284,7 @@ async function urunEkle() {
   const ana_kod = document.getElementById('urunKod').value.trim();
   const marka = document.getElementById('urunMarka').value.trim();
   const aciklama = document.getElementById('urunAciklama').value.trim();
+  const adet_tipi = document.getElementById('urunAdetTipi').value;
   const beden_ayrimi = document.getElementById('bedenAyrimi').checked;
   const bedenlerStr = document.getElementById('bedenlerInput').value.trim();
   const bedenler = bedenlerStr ? bedenlerStr.split(',').map(b => b.trim()).filter(Boolean) : [];
@@ -276,7 +295,7 @@ async function urunEkle() {
   const { data } = await apiFetch(`/toplamalar/api/${toplamId}/urun-ekle`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ana_kod, marka, aciklama, beden_ayrimi, bedenler })
+    body: JSON.stringify({ ana_kod, marka, aciklama, adet_tipi, beden_ayrimi, bedenler })
   });
   setLoading(false);
 
@@ -290,10 +309,11 @@ async function urunEkle() {
 }
 
 // ── Ürün Düzenle ─────────────────────────────────────
-function openUrunDuzenle(id, marka, aciklama, bedenAyrimi, durum) {
+function openUrunDuzenle(id, marka, aciklama, adetTipi, bedenAyrimi, durum) {
   document.getElementById('duzenleUrunId').value = id;
   document.getElementById('duzenleUrunMarka').value = marka;
   document.getElementById('duzenleUrunAciklama').value = aciklama;
+  document.getElementById('duzenleUrunAdetTipi').value = adetTipi || 'Karma';
   document.getElementById('duzenleBedenAyrimi').checked = !!bedenAyrimi;
   document.getElementById('duzenleUrunDurum').checked = !!durum;
   new bootstrap.Modal(document.getElementById('urunDuzenleModal')).show();
@@ -308,6 +328,7 @@ async function urunGuncelle() {
     body: JSON.stringify({
       marka: document.getElementById('duzenleUrunMarka').value,
       aciklama: document.getElementById('duzenleUrunAciklama').value,
+      adet_tipi: document.getElementById('duzenleUrunAdetTipi').value,
       beden_ayrimi: document.getElementById('duzenleBedenAyrimi').checked,
       durum: document.getElementById('duzenleUrunDurum').checked,
     })
@@ -381,4 +402,3 @@ async function toplamExcelYukle() {
 }
 </script>
 {% endblock %}
-

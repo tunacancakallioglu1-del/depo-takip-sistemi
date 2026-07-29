@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Kayıtlar{% endblock %}
+{% block title %}Takip{% endblock %}
 {% block content %}
 
 <div class="page-header">
-  <h1 class="page-title">📋 Kayıtlar</h1>
+  <h1 class="page-title">📋 Takip</h1>
   <div class="d-flex gap-2 flex-wrap">
     <a href="/kayitlar/api/template" class="btn btn-success btn-sm">📥 Şablon İndir</a>
     <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#excelModal">📤 Şablon Yükle</button>
@@ -25,8 +25,8 @@
       </div>
       <div class="col-md-4">
         <div class="alert alert-info py-1 px-2 small mb-0">
-          ℹ Bugünün senkronize edilmemiş siparişlerini Trendyol Sipariş olarak Kayıtlara aktarır.
-          Aynı personel+toplama kaydı varsa üzerine ekleme yapar.
+          ℹ Seçilen tarihteki siparişler yeniden çekilir ve kayıtlar güncellenir.
+          Tarih + Ürün Kodu + Toplama bağlantısı korunur.
         </div>
       </div>
       <div class="col-md-4">

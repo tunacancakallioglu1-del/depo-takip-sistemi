@@ -67,6 +67,7 @@ class Kayit(db.Model):
     tarih = db.Column(db.String(10), nullable=False)
     personel_id = db.Column(db.Integer, db.ForeignKey('personeller.id'), nullable=False)
     toplama_id = db.Column(db.Integer, db.ForeignKey('toplamalar.id'), nullable=False)
+    urun_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=True)
     trendyol_siparis = db.Column(db.Float, default=0)
     trendyol_fatura = db.Column(db.Float, default=0)
     diger_pazar = db.Column(db.Float, default=0)
@@ -86,6 +87,8 @@ class Kayit(db.Model):
             'personel_id': self.personel_id,
             'toplama': self.toplama.ad,
             'toplama_id': self.toplama_id,
+            'urun_id': self.urun_id,
+            'urun_kodu': self.urun.ana_kod if self.urun else None,
             'trendyol_siparis': self.trendyol_siparis,
             'trendyol_fatura': self.trendyol_fatura,
             'diger_pazar': self.diger_pazar,
@@ -112,6 +115,7 @@ class Product(db.Model):
     toplama_id = db.Column(db.Integer, db.ForeignKey('toplamalar.id'), nullable=False)
     beden_ayrimi = db.Column(db.Boolean, default=False, nullable=False)
     durum = db.Column(db.Boolean, default=True, nullable=False)
+    adet_tipi = db.Column(db.String(20), default='Karma', nullable=False)
     olusturulma_tarihi = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     son_guncelleme_tarihi = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     guncelleyen_kullanici = db.Column(db.String(120), default='system', nullable=False)
@@ -129,6 +133,7 @@ class Product(db.Model):
             'toplama_id': self.toplama_id,
             'toplama': self.toplama.ad if self.toplama else None,
             'beden_ayrimi': self.beden_ayrimi,
+            'adet_tipi': self.adet_tipi,
             'durum': self.durum,
         }
 
@@ -204,6 +209,9 @@ class Order(db.Model):
     urun = db.relationship('Product', backref=db.backref('orders', lazy=True))
     toplama = db.relationship('Toplama', backref=db.backref('orders', lazy=True))
     personel = db.relationship('Personel', backref=db.backref('orders', lazy=True))
+
+
+Kayit.urun = db.relationship('Product', backref=db.backref('kayitlar', lazy=True))
 
 
 class Return(db.Model):
@@ -307,6 +315,14 @@ def veritabani_migrasyonu():
                 conn.execute(text('ALTER TABLE kayitlar ADD COLUMN senkronizasyon_sayisi INTEGER DEFAULT 0 NOT NULL'))
             if 'son_senkronizasyon' not in kayit_cols:
                 conn.execute(text('ALTER TABLE kayitlar ADD COLUMN son_senkronizasyon DATETIME'))
+            if 'urun_id' not in kayit_cols:
+                conn.execute(text('ALTER TABLE kayitlar ADD COLUMN urun_id INTEGER'))
+
+        # products tablosuna yeni sütunlar ekle
+        if 'products' in existing_tables:
+            product_cols = [c['name'] for c in inspector.get_columns('products')]
+            if 'adet_tipi' not in product_cols:
+                conn.execute(text("ALTER TABLE products ADD COLUMN adet_tipi VARCHAR(20) DEFAULT 'Karma' NOT NULL"))
 
         # excel_uploads tablosuna yeni sütunlar ekle
         if 'excel_uploads' in existing_tables:
