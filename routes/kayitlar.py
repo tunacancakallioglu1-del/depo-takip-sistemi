@@ -341,7 +341,7 @@ def senkronize_et():
                     db.session.flush()
                     yeni += 1
 
-                # 5. Her kategori → KayitAyrinti + trendyol_siparis güncelle
+                # 5. Her kategori → KayitAyrinti oluştur
                 for cat_key, kat in kategori_gruplari.items():
                     ayrinti = KayitAyrinti(
                         kayit_id=kayit.id,
@@ -353,12 +353,14 @@ def senkronize_et():
                         olusturulma_tarihi=now,
                     )
                     db.session.add(ayrinti)
-                    kayit.trendyol_siparis = (kayit.trendyol_siparis or 0) + kat['adet_toplam']
 
                     for s in kat['siparisler']:
                         s.durum = 'TAMAMLANDI'
                         s.senkronize_edildi = True
                         s.senkronize_tarihi = now
+
+                # Sipariş No = 1 Sipariş (kaç ürün/kategori olursa olsun)
+                kayit.trendyol_siparis = (kayit.trendyol_siparis or 0) + 1
 
         db.session.commit()
         log_audit('senkronizasyon', 'kayitlar', None,
@@ -466,11 +468,13 @@ def _senkronize_upload(upload_id):
                     max_adet_filtre=kat['max_f'],
                     olusturulma_tarihi=now,
                 ))
-                kayit.trendyol_siparis = (kayit.trendyol_siparis or 0) + kat['adet_toplam']
                 for s in kat['siparisler']:
                     s.durum = 'TAMAMLANDI'
                     s.senkronize_edildi = True
                     s.senkronize_tarihi = now
+
+            # Sipariş No = 1 Sipariş (kaç ürün/kategori olursa olsun)
+            kayit.trendyol_siparis = (kayit.trendyol_siparis or 0) + 1
 
     db.session.commit()
     return {
