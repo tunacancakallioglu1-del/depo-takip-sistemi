@@ -142,6 +142,7 @@ def excel_yukle():
     hatali = 0
     row_errors = []
     unique_orders = set()
+    seen_siparis_nos = set()  # grup_baslangic_satiri takibi
 
     for row_no, row in enumerate(rows, start=2):
         siparis_no = str(row.get('Siparis No', '') or '').strip()
@@ -240,9 +241,11 @@ def excel_yukle():
             durum=durum,
             hata_sebebi=hata_sebebi,
             excel_yukleme_id=upload.id,
+            grup_baslangic_satiri=(siparis_no not in seen_siparis_nos),
         )
         db.session.add(order)
         if siparis_no:
+            seen_siparis_nos.add(siparis_no)
             unique_orders.add(siparis_no)
 
     upload.basarili = basarili
@@ -325,6 +328,7 @@ def api_list():
             'durum': item.durum or 'BEKLEMEDE',
             'hata_sebebi': item.hata_sebebi or '',
             'senkronize_edildi': item.senkronize_edildi,
+            'grup_baslangic_satiri': item.grup_baslangic_satiri,
         })
 
     return jsonify({'basarili': True, 'kayitlar': rows, 'toplam': pagination.total})

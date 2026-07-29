@@ -6,7 +6,7 @@ Kayıtlar Rotaları
 from datetime import datetime
 from io import BytesIO
 from flask import Blueprint, render_template, request, jsonify, send_file
-from database import db, Kayit, Personel, Toplama, Order, kayit_ekle, kayit_guncelle, kayit_sil
+from database import db, Kayit, Personel, Toplama, Order, AdetFiltresi, KayitAyrinti, kayit_ekle, kayit_guncelle, kayit_sil
 from utils.excel_utils import build_template, load_excel_rows, calculate_file_hash
 from utils.audit_utils import log_audit
 
@@ -214,9 +214,10 @@ def excel_yukle():
 def senkronize_et():
     """Seçili tarihin siparişlerini kayıtlara senkronize et.
 
-    BEKLEMEDE siparişleri Toplama bazında gruplar ve her Toplama için
-    personel_id=NULL ile kayıt oluşturur (personel sonradan manuel atanır).
-    BEKLEMEDE siparişleri TAMAMLANDI olarak işaretler.
+    Sipariş No bazında gruplama yapar.  Her grubun ilk satırında (grup_baslangic_satiri=True)
+    olan siparişin personel_id'si grubun personeli olarak kullanılır.
+    AdetFiltresi varsa aynı (urun_kodu, beden) için farklı adet aralıklarına ayrı
+    KayitAyrinti satırları oluşturulur.
     """
     try:
         from sqlalchemy import func as sqlfunc
@@ -244,50 +245,120 @@ def senkronize_et():
                 'guncellendi': 0,
             })
 
-        # Toplama bazında sayıları topla
-        gruplar = {}
+        # 1. Sipariş No bazında grupla
+        siparis_gruplari = {}
         for s in siparisler:
-            toplama_id = s.toplama_id
-            gruplar[toplama_id] = gruplar.get(toplama_id, 0) + 1
+            siparis_gruplari.setdefault(s.siparis_no, []).append(s)
 
         yeni = 0
         guncellendi = 0
         now = datetime.now()
 
-        for toplama_id, siparis_sayisi in gruplar.items():
-            # Aynı tarih+toplama ile personel=NULL kayıt var mı?
-            kayit = Kayit.query.filter_by(
-                tarih=tarih_db,
-                toplama_id=toplama_id,
-                personel_id=None,
-            ).first()
+        for siparis_no, grup_listesi in siparis_gruplari.items():
+            # Grup başı personeli: grup_baslangic_satiri=True olan ilk satır
+            grup_bas = next((s for s in grup_listesi if s.grup_baslangic_satiri), None)
+            # Eğer bayrak hiçbirinde yoksa (eski veri) listedeki ilki kabul edilir
+            if grup_bas is None:
+                grup_bas = grup_listesi[0]
+            grup_personel_id = grup_bas.personel_id  # NULL olabilir
 
-            if kayit:
-                kayit.trendyol_siparis = (kayit.trendyol_siparis or 0) + siparis_sayisi
-                kayit.senkronizasyon_sayisi = (kayit.senkronizasyon_sayisi or 0) + 1
-                kayit.son_senkronizasyon = now
-                guncellendi += 1
-            else:
-                kayit = Kayit(
+            # 2. Aynı grup içinde toplama bazında grupla
+            toplama_gruplari = {}
+            for s in grup_listesi:
+                if s.toplama_id is None:
+                    continue
+                toplama_gruplari.setdefault(s.toplama_id, []).append(s)
+
+            for toplama_id, toplama_listesi in toplama_gruplari.items():
+                # 3. Her siparis için AdetFiltresi ile kategori belirle
+                kategori_gruplari = {}  # key → {urun_kodu, beden, adet_toplam, min_f, max_f, siparisler}
+
+                for s in toplama_listesi:
+                    urun_kodu = (s.urun.ana_kod if s.urun else s.urun_kodu_ham) or ''
+                    beden = s.beden or ''
+
+                    filtreler = AdetFiltresi.query.filter_by(
+                        toplama_id=toplama_id,
+                        urun_kodu=urun_kodu,
+                        beden=beden or None,
+                    ).order_by(AdetFiltresi.min_adet).all()
+
+                    # Eğer beden bazlı filtre bulunamazsa NULL beden ile dene
+                    if not filtreler and beden:
+                        filtreler = AdetFiltresi.query.filter_by(
+                            toplama_id=toplama_id,
+                            urun_kodu=urun_kodu,
+                            beden=None,
+                        ).order_by(AdetFiltresi.min_adet).all()
+
+                    min_f = None
+                    max_f = None
+                    for filtre in filtreler:
+                        ust = filtre.max_adet if filtre.max_adet is not None else float('inf')
+                        if filtre.min_adet <= s.adet <= ust:
+                            min_f = filtre.min_adet
+                            max_f = filtre.max_adet
+                            break
+
+                    cat_key = (urun_kodu, beden, min_f, max_f)
+                    if cat_key not in kategori_gruplari:
+                        kategori_gruplari[cat_key] = {
+                            'urun_kodu': urun_kodu,
+                            'beden': beden,
+                            'adet_toplam': 0,
+                            'min_f': min_f,
+                            'max_f': max_f,
+                            'siparisler': [],
+                        }
+                    kategori_gruplari[cat_key]['adet_toplam'] += s.adet
+                    kategori_gruplari[cat_key]['siparisler'].append(s)
+
+                # 4. Bu toplama + personel için Kayit bul ya da oluştur
+                kayit = Kayit.query.filter_by(
                     tarih=tarih_db,
-                    personel_id=None,
                     toplama_id=toplama_id,
-                    trendyol_siparis=siparis_sayisi,
-                    trendyol_fatura=0,
-                    diger_pazar=0,
-                    not_alan='',
-                    senkronizasyon_sayisi=1,
-                    son_senkronizasyon=now,
-                )
-                db.session.add(kayit)
-                db.session.flush()
-                yeni += 1
+                    personel_id=grup_personel_id,
+                ).first()
 
-        # BEKLEMEDE siparişleri TAMAMLANDI yap
-        for s in siparisler:
-            s.durum = 'TAMAMLANDI'
-            s.senkronize_edildi = True
-            s.senkronize_tarihi = now
+                if kayit:
+                    kayit.senkronizasyon_sayisi = (kayit.senkronizasyon_sayisi or 0) + 1
+                    kayit.son_senkronizasyon = now
+                    guncellendi += 1
+                else:
+                    toplam_adet = sum(k['adet_toplam'] for k in kategori_gruplari.values())
+                    kayit = Kayit(
+                        tarih=tarih_db,
+                        personel_id=grup_personel_id,
+                        toplama_id=toplama_id,
+                        trendyol_siparis=0,
+                        trendyol_fatura=0,
+                        diger_pazar=0,
+                        not_alan='',
+                        senkronizasyon_sayisi=1,
+                        son_senkronizasyon=now,
+                    )
+                    db.session.add(kayit)
+                    db.session.flush()
+                    yeni += 1
+
+                # 5. Her kategori → KayitAyrinti + trendyol_siparis güncelle
+                for cat_key, kat in kategori_gruplari.items():
+                    ayrinti = KayitAyrinti(
+                        kayit_id=kayit.id,
+                        urun_kodu=kat['urun_kodu'],
+                        beden=kat['beden'] or None,
+                        adet=kat['adet_toplam'],
+                        min_adet_filtre=kat['min_f'],
+                        max_adet_filtre=kat['max_f'],
+                        olusturulma_tarihi=now,
+                    )
+                    db.session.add(ayrinti)
+                    kayit.trendyol_siparis = (kayit.trendyol_siparis or 0) + kat['adet_toplam']
+
+                    for s in kat['siparisler']:
+                        s.durum = 'TAMAMLANDI'
+                        s.senkronize_edildi = True
+                        s.senkronize_tarihi = now
 
         db.session.commit()
         log_audit('senkronizasyon', 'kayitlar', None,
@@ -295,19 +366,24 @@ def senkronize_et():
 
         return jsonify({
             'basarili': True,
-            'mesaj': f'{yeni} yeni kayıt oluşturuldu, {guncellendi} kayıt güncellendi. Personel alanı boş bırakıldı.',
+            'mesaj': (
+                f'{len(siparis_gruplari)} sipariş grubu işlendi. '
+                f'{yeni} yeni kayıt oluşturuldu, {guncellendi} kayıt güncellendi.'
+            ),
             'yeni': yeni,
             'guncellendi': guncellendi,
         })
 
     except Exception:
         db.session.rollback()
+        import traceback; traceback.print_exc()
         return jsonify({'basarili': False, 'mesaj': 'Senkronizasyon sırasında bir hata oluştu.'}), 500
 
 
 def _senkronize_upload(upload_id):
     """Belirli bir upload_id için senkronizasyon yap (route dışından çağrılabilir)"""
-    tarih_db = datetime.utcnow().strftime('%d.%m.%Y')
+    now = datetime.now()
+    tarih_db = now.strftime('%d.%m.%Y')
 
     siparisler = Order.query.filter_by(
         excel_yukleme_id=upload_id,
@@ -317,47 +393,84 @@ def _senkronize_upload(upload_id):
     if not siparisler:
         return {'basarili': True, 'mesaj': 'Senkronize edilecek BEKLEMEDE sipariş bulunamadı.', 'yeni': 0, 'guncellendi': 0}
 
-    gruplar = {}
+    siparis_gruplari = {}
     for s in siparisler:
-        toplama_id = s.toplama_id
-        gruplar[toplama_id] = gruplar.get(toplama_id, 0) + 1
+        siparis_gruplari.setdefault(s.siparis_no, []).append(s)
 
     yeni = 0
     guncellendi = 0
 
-    for toplama_id, siparis_sayisi in gruplar.items():
-        kayit = Kayit.query.filter_by(
-            tarih=tarih_db,
-            toplama_id=toplama_id,
-            personel_id=None,
-        ).first()
+    for siparis_no, grup_listesi in siparis_gruplari.items():
+        grup_bas = next((s for s in grup_listesi if s.grup_baslangic_satiri), None)
+        if grup_bas is None:
+            grup_bas = grup_listesi[0]
+        grup_personel_id = grup_bas.personel_id
 
-        if kayit:
-            kayit.trendyol_siparis = (kayit.trendyol_siparis or 0) + siparis_sayisi
-            kayit.senkronizasyon_sayisi = (kayit.senkronizasyon_sayisi or 0) + 1
-            kayit.son_senkronizasyon = datetime.now()
-            guncellendi += 1
-        else:
-            kayit = Kayit(
-                tarih=tarih_db,
-                personel_id=None,
-                toplama_id=toplama_id,
-                trendyol_siparis=siparis_sayisi,
-                trendyol_fatura=0,
-                diger_pazar=0,
-                not_alan='',
-                senkronizasyon_sayisi=1,
-                son_senkronizasyon=datetime.now(),
-            )
-            db.session.add(kayit)
-            db.session.flush()
-            yeni += 1
+        toplama_gruplari = {}
+        for s in grup_listesi:
+            if s.toplama_id is None:
+                continue
+            toplama_gruplari.setdefault(s.toplama_id, []).append(s)
 
-    now = datetime.now()
-    for s in siparisler:
-        s.senkronize_edildi = True
-        s.senkronize_tarihi = now
-        s.durum = 'TAMAMLANDI'
+        for toplama_id, toplama_listesi in toplama_gruplari.items():
+            kategori_gruplari = {}
+            for s in toplama_listesi:
+                urun_kodu = (s.urun.ana_kod if s.urun else s.urun_kodu_ham) or ''
+                beden = s.beden or ''
+                filtreler = AdetFiltresi.query.filter_by(
+                    toplama_id=toplama_id, urun_kodu=urun_kodu, beden=beden or None,
+                ).order_by(AdetFiltresi.min_adet).all()
+                if not filtreler and beden:
+                    filtreler = AdetFiltresi.query.filter_by(
+                        toplama_id=toplama_id, urun_kodu=urun_kodu, beden=None,
+                    ).order_by(AdetFiltresi.min_adet).all()
+                min_f = max_f = None
+                for filtre in filtreler:
+                    ust = filtre.max_adet if filtre.max_adet is not None else float('inf')
+                    if filtre.min_adet <= s.adet <= ust:
+                        min_f, max_f = filtre.min_adet, filtre.max_adet
+                        break
+                cat_key = (urun_kodu, beden, min_f, max_f)
+                if cat_key not in kategori_gruplari:
+                    kategori_gruplari[cat_key] = {
+                        'urun_kodu': urun_kodu, 'beden': beden,
+                        'adet_toplam': 0, 'min_f': min_f, 'max_f': max_f, 'siparisler': [],
+                    }
+                kategori_gruplari[cat_key]['adet_toplam'] += s.adet
+                kategori_gruplari[cat_key]['siparisler'].append(s)
+
+            kayit = Kayit.query.filter_by(
+                tarih=tarih_db, toplama_id=toplama_id, personel_id=grup_personel_id,
+            ).first()
+            if kayit:
+                kayit.senkronizasyon_sayisi = (kayit.senkronizasyon_sayisi or 0) + 1
+                kayit.son_senkronizasyon = now
+                guncellendi += 1
+            else:
+                kayit = Kayit(
+                    tarih=tarih_db, personel_id=grup_personel_id, toplama_id=toplama_id,
+                    trendyol_siparis=0, trendyol_fatura=0, diger_pazar=0, not_alan='',
+                    senkronizasyon_sayisi=1, son_senkronizasyon=now,
+                )
+                db.session.add(kayit)
+                db.session.flush()
+                yeni += 1
+
+            for cat_key, kat in kategori_gruplari.items():
+                db.session.add(KayitAyrinti(
+                    kayit_id=kayit.id,
+                    urun_kodu=kat['urun_kodu'],
+                    beden=kat['beden'] or None,
+                    adet=kat['adet_toplam'],
+                    min_adet_filtre=kat['min_f'],
+                    max_adet_filtre=kat['max_f'],
+                    olusturulma_tarihi=now,
+                ))
+                kayit.trendyol_siparis = (kayit.trendyol_siparis or 0) + kat['adet_toplam']
+                for s in kat['siparisler']:
+                    s.durum = 'TAMAMLANDI'
+                    s.senkronize_edildi = True
+                    s.senkronize_tarihi = now
 
     db.session.commit()
     return {
