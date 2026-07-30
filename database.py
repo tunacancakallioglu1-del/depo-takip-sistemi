@@ -227,7 +227,7 @@ class Return(db.Model):
     adet = db.Column(db.Integer, nullable=False, default=1)
     sebebi = db.Column(db.String(255), nullable=True)
     toplama_id = db.Column(db.Integer, db.ForeignKey('toplamalar.id'), nullable=True)
-    durum = db.Column(db.String(50), default='BEKLEMEDE', nullable=False)
+    durum = db.Column(db.String(50), default='YÜKLENDİ', nullable=False)
     hata_sebebi = db.Column(db.Text, nullable=True)
     excel_yukleme_id = db.Column(db.Integer, db.ForeignKey('excel_uploads.id'), nullable=True)
 
@@ -617,6 +617,12 @@ def veritabani_migrasyonu():
             '''))
             conn.execute(text('CREATE INDEX IF NOT EXISTS ix_iade_hatasi_tarih ON iade_hatalari(tarih)'))
             conn.execute(text('CREATE INDEX IF NOT EXISTS ix_iade_hatasi_personel ON iade_hatalari(personel_id)'))
+
+        # Mevcut returns tablosundaki BEKLEMEDE ve TAMAMLANDI kayıtları YÜKLENDİ'ye çevir
+        if 'returns' in existing_tables:
+            conn.execute(text(
+                "UPDATE returns SET durum = 'YÜKLENDİ' WHERE durum IN ('BEKLEMEDE', 'TAMAMLANDI')"
+            ))
 
         conn.commit()
     print("✓ Veritabanı migrasyonu tamamlandı")

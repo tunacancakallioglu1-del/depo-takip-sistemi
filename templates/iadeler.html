@@ -7,8 +7,7 @@
 
 /* ── Durum Rozetleri ──────────────────────────────────────────── */
 .durum-hatali    { background:#FFE5E5; color:#D32F2F; border:1px solid #FFCDD2; }
-.durum-beklemede { background:#FFF9C4; color:#F57F17; border:1px solid #FFF176; }
-.durum-tamamlandi{ background:#E8F5E9; color:#2E7D32; border:1px solid #C8E6C9; }
+.durum-yuklendi  { background:#E8F5E9; color:#2E7D32; border:1px solid #C8E6C9; }
 .badge-durum { padding:4px 10px; border-radius:20px; font-size:.78rem; font-weight:600; cursor:default; white-space:nowrap; }
 
 /* ── Özet Kartlar ────────────────────────────────────────────── */
@@ -36,7 +35,7 @@
 
 <!-- Özet İstatistikler -->
 <div class="row g-3 mb-3" id="statsRow">
-  <div class="col-6 col-md-3">
+  <div class="col-6 col-md-6">
     <div class="stat-card bg-light border">
       <span class="stat-icon">↩️</span>
       <div><div class="stat-val" id="statToplam">—</div><div class="stat-lbl">Toplam</div></div>
@@ -49,15 +48,9 @@
     </div>
   </div>
   <div class="col-6 col-md-3">
-    <div class="stat-card border" style="background:#FFF9C4">
-      <span class="stat-icon">🟡</span>
-      <div><div class="stat-val" style="color:#F57F17" id="statBeklemede">—</div><div class="stat-lbl">Beklemede</div></div>
-    </div>
-  </div>
-  <div class="col-6 col-md-3">
     <div class="stat-card border" style="background:#E8F5E9">
       <span class="stat-icon">🟢</span>
-      <div><div class="stat-val text-success" id="statTamamlandi">—</div><div class="stat-lbl">Tamamlandı</div></div>
+      <div><div class="stat-val text-success" id="statYuklendi">—</div><div class="stat-lbl">Yüklendi</div></div>
     </div>
   </div>
 </div>
@@ -93,8 +86,7 @@
         <select class="form-select form-select-sm" id="fDurum">
           <option value="">Tümü</option>
           <option value="HATALI">🔴 Hatalı</option>
-          <option value="BEKLEMEDE">🟡 Beklemede</option>
-          <option value="TAMAMLANDI">🟢 Tamamlandı</option>
+          <option value="YÜKLENDİ">🟢 Yüklendi</option>
         </select>
       </div>
       <div class="col-6 col-md-2 d-flex gap-1">
@@ -308,12 +300,10 @@ async function loadMeta() {
 async function loadStats() {
   const total = await apiFetch('/iadeler/api/list?per_page=1');
   const hatali = await apiFetch('/iadeler/api/list?durum=HATALI&per_page=1');
-  const bekl = await apiFetch('/iadeler/api/list?durum=BEKLEMEDE&per_page=1');
-  const tamam = await apiFetch('/iadeler/api/list?durum=TAMAMLANDI&per_page=1');
-  document.getElementById('statToplam').textContent     = total.data?.toplam ?? '—';
-  document.getElementById('statHatali').textContent     = hatali.data?.toplam ?? '—';
-  document.getElementById('statBeklemede').textContent  = bekl.data?.toplam ?? '—';
-  document.getElementById('statTamamlandi').textContent = tamam.data?.toplam ?? '—';
+  const yuklendi = await apiFetch('/iadeler/api/list?durum=YÜKLENDİ&per_page=1');
+  document.getElementById('statToplam').textContent   = total.data?.toplam ?? '—';
+  document.getElementById('statHatali').textContent   = hatali.data?.toplam ?? '—';
+  document.getElementById('statYuklendi').textContent = yuklendi.data?.toplam ?? '—';
 }
 
 // ── Filtre URL ────────────────────────────────────────────────
@@ -366,11 +356,13 @@ async function tumIadeleriGuncelle() {
 // ── Durum Rozeti ──────────────────────────────────────────────
 function durumBadge(durum, hataSebebi) {
   const map = {
-    HATALI:     { cls:'durum-hatali',     icon:'🔴', lbl:'HATALI' },
-    BEKLEMEDE:  { cls:'durum-beklemede',  icon:'🟡', lbl:'BEKLEMEDE' },
-    TAMAMLANDI: { cls:'durum-tamamlandi', icon:'🟢', lbl:'TAMAMLANDI' },
+    HATALI:     { cls:'durum-hatali',    icon:'🔴', lbl:'HATALI' },
+    'YÜKLENDİ': { cls:'durum-yuklendi', icon:'🟢', lbl:'YÜKLENDİ' },
+    // Geriye dönük uyumluluk
+    BEKLEMEDE:  { cls:'durum-yuklendi', icon:'🟢', lbl:'YÜKLENDİ' },
+    TAMAMLANDI: { cls:'durum-yuklendi', icon:'🟢', lbl:'YÜKLENDİ' },
   };
-  const d = map[durum] || map['BEKLEMEDE'];
+  const d = map[durum] || map['YÜKLENDİ'];
   const tip = hataSebebi ? ` title="${escHtml(hataSebebi)}" data-bs-toggle="tooltip"` : '';
   return `<span class="badge-durum ${d.cls}"${tip}>${d.icon} ${d.lbl}</span>`;
 }
@@ -518,8 +510,7 @@ function goster_iade_modal(iade, urunler) {
 function getGrupDurumu(rows) {
   const durumlar = rows.map(r => r.durum);
   if (durumlar.includes('HATALI')) return 'HATALI';
-  if (durumlar.includes('BEKLEMEDE')) return 'BEKLEMEDE';
-  return 'TAMAMLANDI';
+  return 'YÜKLENDİ';
 }
 
 function getGrupHataSebebi(rows) {
@@ -633,7 +624,7 @@ async function iadeGuncelle() {
   if (data.basarili) {
     const durumMsg = data.yeni_durum === 'HATALI'
       ? '⚠️ Kaydedildi ama HATALI durumda'
-      : (data.yeni_durum === 'BEKLEMEDE' ? '✓ Kaydedildi — BEKLEMEDE' : '✓ Kaydedildi — TAMAMLANDI');
+      : '✓ Kaydedildi — YÜKLENDİ';
     showAlert(data.yeni_durum === 'HATALI' ? 'warning' : 'success', durumMsg);
     bootstrap.Modal.getInstance(document.getElementById('iadeDuzenleModal')).hide();
     loadIadeler(currentPage);

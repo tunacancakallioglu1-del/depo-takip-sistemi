@@ -202,7 +202,7 @@ def excel_yukle():
                 'hata': hata_sebebi,
             })
         else:
-            durum = 'BEKLEMEDE'
+            durum = 'YÜKLENDİ'
             hata_sebebi = None
             basarili += 1
 
@@ -321,7 +321,7 @@ def api_list():
             'sebep': item.sebebi or '',
             'toplama': item.toplama.ad if item.toplama else '',
             'toplama_id': item.toplama_id,
-            'durum': item.durum or 'BEKLEMEDE',
+            'durum': item.durum or 'YÜKLENDİ',
             'hata_sebebi': item.hata_sebebi or '',
         })
 
@@ -342,7 +342,7 @@ def api_get(return_id):
             'adet': ret.adet,
             'sebebi': ret.sebebi or '',
             'toplama_id': ret.toplama_id,
-            'durum': ret.durum or 'BEKLEMEDE',
+            'durum': ret.durum or 'YÜKLENDİ',
             'hata_sebebi': ret.hata_sebebi or '',
         },
     })
@@ -384,8 +384,8 @@ def api_guncelle(return_id):
         else:
             ret.urun_id = None
 
-    # Durum otomatik belirleme (TAMAMLANDI ise değiştirme)
-    if eski_durum != 'TAMAMLANDI':
+    # Durum otomatik belirleme (YÜKLENDİ ise değiştirme)
+    if eski_durum != 'YÜKLENDİ':
         errors = _check_return(
             siparis_no=ret.siparis_no,
             tarih=ret.tarih,
@@ -400,7 +400,7 @@ def api_guncelle(return_id):
             ret.durum = 'HATALI'
             ret.hata_sebebi = '; '.join(errors)
         else:
-            ret.durum = 'BEKLEMEDE'
+            ret.durum = 'YÜKLENDİ'
             ret.hata_sebebi = None
 
     log_audit('update', 'returns', return_id, eski_deger=eski,
@@ -455,7 +455,7 @@ def api_grup_revalidate():
             ret.hata_sebebi = '; '.join(errors)
             hatali_kalan += 1
         else:
-            ret.durum = 'BEKLEMEDE'
+            ret.durum = 'YÜKLENDİ'
             ret.hata_sebebi = None
             duzeltilen += 1
 
@@ -464,7 +464,7 @@ def api_grup_revalidate():
               yeni_deger={'siparis_no': siparis_no, 'duzeltilen': duzeltilen, 'hatali_kalan': hatali_kalan})
 
     if duzeltilen:
-        mesaj = f'{duzeltilen} iade BEKLEMEDE oldu' + (f', {hatali_kalan} hata devam ediyor' if hatali_kalan else '')
+        mesaj = f'{duzeltilen} iade YÜKLENDİ oldu' + (f', {hatali_kalan} hata devam ediyor' if hatali_kalan else '')
     else:
         mesaj = f'Hatalar devam ediyor ({hatali_kalan} iade)'
     return jsonify({'basarili': True, 'duzeltilen': duzeltilen, 'hatali_kalan': hatali_kalan, 'mesaj': mesaj})
@@ -523,7 +523,7 @@ def guncelle_hatali_iadeler_route():
             ret.hata_sebebi = '; '.join(errors)
             hala_hatali += 1
         else:
-            ret.durum = 'BEKLEMEDE'
+            ret.durum = 'YÜKLENDİ'
             ret.hata_sebebi = None
             duzeltilen += 1
 
@@ -534,7 +534,7 @@ def guncelle_hatali_iadeler_route():
     return jsonify({
         'status': 'success',
         'basarili': True,
-        'message': f"{duzeltilen} iade BEKLEMEDE'ye geçti. {hala_hatali} iade hâlâ HATALI",
+        'message': f"{duzeltilen} iade YÜKLENDİ'ye geçti. {hala_hatali} iade hâlâ HATALI",
         'duzeltilen': duzeltilen,
         'hala_hatali': hala_hatali,
     })
@@ -567,7 +567,7 @@ def tum_iadeleri_guncelle():
     hatali_kalan = 0
 
     for ret in iadeler:
-        if ret.durum == 'TAMAMLANDI':
+        if ret.durum == 'YÜKLENDİ':
             guncellenen += 1
             continue
 
@@ -579,9 +579,9 @@ def tum_iadeleri_guncelle():
             ret.hata_sebebi = '; '.join(errors)
             hatali_kalan += 1
         else:
-            ret.durum = 'BEKLEMEDE'
+            ret.durum = 'YÜKLENDİ'
             ret.hata_sebebi = None
-            if onceki_durum != 'BEKLEMEDE':
+            if onceki_durum != 'YÜKLENDİ':
                 duzeltilen += 1
 
         guncellenen += 1
@@ -635,7 +635,7 @@ def listele_uyumlu():
         'adet': r.adet,
         'sebep': r.sebebi or '',
         'toplama': r.toplama.ad if r.toplama else '',
-        'durum': r.durum or 'BEKLEMEDE',
+        'durum': r.durum or 'YÜKLENDİ',
         'hata_sebebi': r.hata_sebebi or '',
     } for r in iadeler]
 
@@ -654,7 +654,7 @@ def api_siparis_detay(siparis_no):
         'siparis_no': siparis_no,
         'tarih': first.tarih.strftime('%d.%m.%Y') if first.tarih else '-',
         'toplama': first.toplama.ad if first.toplama else '-',
-        'durum': first.durum or 'BEKLEMEDE',
+        'durum': first.durum or 'YÜKLENDİ',
     }
 
     urunler = []
@@ -859,3 +859,43 @@ def api_analizler():
         'toplama_iadeleri': [{'toplama': r.toplama, 'adet': int(r.adet)} for r in toplama_iadeleri],
     })
 
+
+@iadeler_bp.route('/api/durum-guncelle', methods=['POST'])
+def api_durum_guncelle():
+    """İade durumunu manuel olarak güncelle: HATALI veya YÜKLENDİ"""
+    data = request.json or {}
+    iade_id = data.get('iade_id')
+    yeni_durum = str(data.get('durum', '')).strip().upper()
+
+    if not iade_id:
+        return jsonify({'basarili': False, 'mesaj': 'İade ID gerekli'}), 400
+
+    if yeni_durum not in ('HATALI', 'YÜKLENDİ'):
+        return jsonify({'basarili': False, 'mesaj': 'Geçersiz durum. HATALI veya YÜKLENDİ olmalı'}), 400
+
+    ret = Return.query.get_or_404(iade_id)
+    eski_durum = ret.durum
+
+    if yeni_durum == 'YÜKLENDİ':
+        errors = _check_return(
+            siparis_no=ret.siparis_no,
+            tarih=ret.tarih,
+            urun_id=ret.urun_id,
+            urun_kodu_ham=ret.urun_kodu_ham,
+            beden=ret.beden,
+            adet=ret.adet,
+            toplama_id=ret.toplama_id,
+            product=ret.urun,
+        )
+        if errors:
+            return jsonify({'basarili': False, 'mesaj': 'YÜKLENDİ yapılamaz: ' + '; '.join(errors)}), 400
+        ret.hata_sebebi = None
+    else:
+        ret.hata_sebebi = ret.hata_sebebi or 'Manuel olarak HATALI yapıldı'
+
+    ret.durum = yeni_durum
+    log_audit('durum_guncelle', 'returns', iade_id,
+              eski_deger={'durum': eski_durum},
+              yeni_deger={'durum': yeni_durum})
+    db.session.commit()
+    return jsonify({'basarili': True, 'mesaj': f'İade durumu {yeni_durum} yapıldı', 'yeni_durum': yeni_durum})
