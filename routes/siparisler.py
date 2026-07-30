@@ -319,6 +319,7 @@ def api_list():
             'adet': item.adet,
             'toplama': item.toplama.ad if item.toplama else '',
             'toplama_id': item.toplama_id,
+            'personel': item.personel.ad if item.personel else '',
             'durum': item.durum or 'BEKLEMEDE',
             'hata_sebebi': item.hata_sebebi or '',
             'senkronize_edildi': item.senkronize_edildi,
@@ -628,6 +629,36 @@ def api_hatali_excel_genel():
         download_name=f'hatali_siparisler_{tarih_str}.xlsx',
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     )
+
+
+@siparisler_bp.route('/api/siparis-detay/<siparis_no>')
+def api_siparis_detay(siparis_no):
+    """Sipariş No'ya ait tüm ürün satırlarını döndür."""
+    orders = Order.query.filter_by(siparis_no=siparis_no).order_by(Order.id).all()
+    if not orders:
+        return jsonify({'basarili': False, 'mesaj': 'Sipariş bulunamadı'}), 404
+
+    first = orders[0]
+    siparis_dict = {
+        'siparis_no': siparis_no,
+        'tarih': first.tarih.strftime('%d.%m.%Y') if first.tarih else '-',
+        'personel': first.personel.ad if first.personel else '-',
+        'toplama': first.toplama.ad if first.toplama else '-',
+        'durum': first.durum or 'BEKLEMEDE',
+    }
+
+    urunler = []
+    for o in orders:
+        urunler.append({
+            'id': o.id,
+            'urun_kodu': (o.urun.ana_kod if o.urun else o.urun_kodu_ham) or '-',
+            'beden': o.beden or '-',
+            'adet': o.adet,
+            'durum': o.durum,
+            'hata_sebebi': o.hata_sebebi or '',
+        })
+
+    return jsonify({'basarili': True, 'siparis': siparis_dict, 'urunler': urunler})
 
 
 @siparisler_bp.route('/api/excel-indir')

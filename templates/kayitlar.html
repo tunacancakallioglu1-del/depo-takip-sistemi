@@ -68,6 +68,7 @@
           <button class="btn btn-primary btn-sm flex-fill" onclick="loadKayitlar()">🔍 Filtrele</button>
           <button class="btn btn-secondary btn-sm" onclick="sifirlaFiltre()" title="Son 30 güne sıfırla">↺</button>
         </div>
+        <button class="btn btn-success btn-sm w-100 mt-1" onclick="kayitlarExcelIndir()">📊 Excel İndir</button>
       </div>
     </div>
   </div>
@@ -500,9 +501,45 @@ document.querySelectorAll('.deleteBtn').forEach(btn => {
   });
 });
 
+// ── Kayıtlar Excel İndir ─────────────────────────────────
+async function kayitlarExcelIndir() {
+  const baslangic = document.getElementById('filterBaslangic').value;
+  const bitis = document.getElementById('filterBitis').value;
+  if (!baslangic || !bitis) {
+    showAlert('warning', 'Lütfen tarih aralığını seçin!');
+    return;
+  }
+  setLoading(true);
+  try {
+    const resp = await fetch('/kayitlar/api/excel-export', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ baslangic_tarihi: baslangic, bitis_tarihi: bitis }),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      showAlert('danger', '✗ ' + (err.mesaj || 'Excel export başarısız'));
+      return;
+    }
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const tarihStr = new Date().toLocaleDateString('tr-TR').replace(/\./g, '_');
+    a.href = url;
+    a.download = `kayitlar_${tarihStr}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    showAlert('danger', '✗ Excel export sırasında hata oluştu');
+  } finally {
+    setLoading(false);
+  }
+}
+
 // ── Excel Yükle ─────────────────────────────────────────
 async function excelYukle() {
-  const file = document.getElementById('excelFile').files[0];
   if (!file) { showAlert('warning', 'Dosya seçin!'); return; }
 
   const fd = new FormData();

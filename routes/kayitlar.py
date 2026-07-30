@@ -419,6 +419,100 @@ def senkronize_et():
         import traceback; traceback.print_exc()
         return jsonify({'basarili': False, 'mesaj': 'Senkronizasyon sırasında bir hata oluştu.'}), 500
 
+@kayitlar_bp.route('/api/excel-export', methods=['POST'])
+def excel_export():
+    """Kayıtları Excel'e aktar (Tarih aralığına göre, ürün detaylarıyla)"""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+
+    veri = request.get_json() or {}
+    baslangic_str = str(veri.get('baslangic_tarihi') or '').strip()
+    bitis_str = str(veri.get('bitis_tarihi') or '').strip()
+
+    if not baslangic_str or not bitis_str:
+        return jsonify({'basarili': False, 'mesaj': 'Tarih aralığı zorunludur!'}), 400
+
+    try:
+        tarih_bas = datetime.strptime(baslangic_str, '%Y-%m-%d').date()
+        tarih_bit = datetime.strptime(bitis_str, '%Y-%m-%d').date()
+    except ValueError:
+        return jsonify({'basarili': False, 'mesaj': 'Geçersiz tarih formatı!'}), 400
+
+    tum_kayitlar = Kayit.query.all()
+    kayitlar = []
+    for k in tum_kayitlar:
+        try:
+            k_tarih = datetime.strptime(k.tarih, '%d.%m.%Y').date()
+        except ValueError:
+            continue
+        if tarih_bas <= k_tarih <= tarih_bit:
+            kayitlar.append(k)
+
+    kayitlar.sort(key=lambda k: datetime.strptime(k.tarih, '%d.%m.%Y'), reverse=True)
+
+    if not kayitlar:
+        return jsonify({'basarili': False, 'mesaj': 'Seçili tarih aralığında kayıt bulunamadı!'}), 404
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Kayıtlar'
+
+    basliklar = ['Tarih', 'Personel', 'Toplama', 'Sipariş Sayısı', 'Ürün Kodu', 'Beden', 'Adet', 'Senkronizasyon Tarihi']
+    ws.append(basliklar)
+
+    header_fill = PatternFill(start_color='0066CC', end_color='0066CC', fill_type='solid')
+    header_font = Font(bold=True, color='FFFFFF', size=11)
+    thin = Side(style='thin')
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    for cell in ws[1]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.border = border
+        cell.alignment = Alignment(horizontal='center', vertical='center')
+
+    for kayit in kayitlar:
+        personel_adi = kayit.personel.ad if kayit.personel else '—'
+        toplama_adi = kayit.toplama.ad if kayit.toplama else '—'
+        siparis_sayisi = int(kayit.trendyol_siparis or 0)
+        senk_tarihi = kayit.son_senkronizasyon.strftime('%d.%m.%Y %H:%M') if kayit.son_senkronizasyon else '—'
+
+        ayrintilari = KayitAyrinti.query.filter_by(kayit_id=kayit.id).all()
+
+        if not ayrintilari:
+            ws.append([kayit.tarih, personel_adi, toplama_adi, siparis_sayisi, '—', '—', '—', senk_tarihi])
+        else:
+            for i, ayrinti in enumerate(ayrintilari):
+                if i == 0:
+                    ws.append([
+                        kayit.tarih, personel_adi, toplama_adi, siparis_sayisi,
+                        ayrinti.urun_kodu, ayrinti.beden or '—', ayrinti.adet, senk_tarihi,
+                    ])
+                else:
+                    ws.append(['', '', '', '', ayrinti.urun_kodu, ayrinti.beden or '—', ayrinti.adet, ''])
+
+    ws.column_dimensions['A'].width = 12
+    ws.column_dimensions['B'].width = 18
+    ws.column_dimensions['C'].width = 16
+    ws.column_dimensions['D'].width = 14
+    ws.column_dimensions['E'].width = 14
+    ws.column_dimensions['F'].width = 10
+    ws.column_dimensions['G'].width = 8
+    ws.column_dimensions['H'].width = 22
+
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    dosya_adi = f'kayitlar_{datetime.now().strftime("%d_%m_%Y")}.xlsx'
+    return send_file(
+        output,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True,
+        download_name=dosya_adi,
+    )
+
+
 def _senkronize_upload(upload_id):
     """Belirli bir upload_id için senkronizasyon yap (route dışından çağrılabilir)"""
     now = datetime.now()

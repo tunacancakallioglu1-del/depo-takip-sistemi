@@ -189,3 +189,87 @@ def export_report():
         download_name=f'{rapor_tipi}_raporu.xlsx',
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     )
+
+
+@raporlar_bp.route('/api/baglanti/siparisler', methods=['POST'])
+def baglanti_siparisler():
+    """Siparişler raporu — personel filtreli"""
+    from database import Order as Siparis
+    veri = request.get_json() or {}
+    personel_id = veri.get('personel_id')
+
+    sorgu = Siparis.query
+    if personel_id:
+        sorgu = sorgu.filter(Siparis.personel_id == int(personel_id))
+
+    siparisler = sorgu.order_by(Siparis.tarih.desc()).all()
+
+    liste = []
+    for s in siparisler:
+        liste.append({
+            'tarih': s.tarih.strftime('%d.%m.%Y') if s.tarih else '—',
+            'personel': s.personel.ad if s.personel else '—',
+            'toplama': s.toplama.ad if s.toplama else '—',
+            'siparis_no': s.siparis_no,
+            'urun_kodu': (s.urun.ana_kod if s.urun else s.urun_kodu_ham) or '—',
+            'beden': s.beden or '—',
+            'durum': s.durum,
+        })
+    return jsonify({'basarili': True, 'siparisler': liste})
+
+
+@raporlar_bp.route('/api/baglanti/urunler', methods=['POST'])
+def baglanti_urunler():
+    """Ürünler raporu — kayıt ayıntıları üzerinden personel filtreli"""
+    from database import KayitAyrinti, Kayit as KayitModel
+    veri = request.get_json() or {}
+    personel_id = veri.get('personel_id')
+
+    sorgu = KayitAyrinti.query.join(KayitModel, KayitAyrinti.kayit_id == KayitModel.id)
+    if personel_id:
+        sorgu = sorgu.filter(KayitModel.personel_id == int(personel_id))
+
+    ayrintilari = sorgu.order_by(KayitModel.tarih.desc()).all()
+
+    liste = []
+    for a in ayrintilari:
+        k = a.kayit
+        liste.append({
+            'tarih': k.tarih,
+            'personel': k.personel.ad if k.personel else '—',
+            'urun_kodu': a.urun_kodu,
+            'toplama': k.toplama.ad if k.toplama else '—',
+            'beden': a.beden or '—',
+            'adet': a.adet,
+        })
+    return jsonify({'basarili': True, 'urunler': liste})
+
+
+@raporlar_bp.route('/api/baglanti/kayitlar', methods=['POST'])
+def baglanti_kayitlar():
+    """Kayıtlar raporu — personel filtreli"""
+    from database import Kayit as KayitModel
+    veri = request.get_json() or {}
+    personel_id = veri.get('personel_id')
+
+    sorgu = KayitModel.query
+    if personel_id:
+        sorgu = sorgu.filter(KayitModel.personel_id == int(personel_id))
+
+    kayitlar = sorgu.all()
+    kayitlar.sort(key=lambda k: (
+        datetime.strptime(k.tarih, '%d.%m.%Y') if '.' in k.tarih else datetime.min
+    ), reverse=True)
+
+    liste = []
+    for k in kayitlar:
+        liste.append({
+            'id': k.id,
+            'tarih': k.tarih,
+            'personel': k.personel.ad if k.personel else '—',
+            'toplama': k.toplama.ad if k.toplama else '—',
+            'siparis_sayisi': int(k.trendyol_siparis or 0),
+            'senkronizasyon_sayisi': k.senkronizasyon_sayisi or 0,
+            'senkronizasyon_tarihi': k.son_senkronizasyon.strftime('%d.%m.%Y %H:%M') if k.son_senkronizasyon else '—',
+        })
+    return jsonify({'basarili': True, 'kayitlar': liste})
