@@ -6,25 +6,332 @@ from datetime import datetime
 import pandas as pd
 from flask import Blueprint, render_template, request, jsonify, send_file
 from sqlalchemy import func
-from database import db, Order, Return, Product, Personel, Toplama, Kayit
+from database import db, Order, Return, Product, Personel, Toplama, Kayit, KayitAyrinti, IadeHatasi
 
 raporlar_bp = Blueprint('raporlar', __name__, url_prefix='/raporlar')
 
+HATA_TIPLERI = [
+    'YANLIŞ ÜRÜN',
+    'YANLIŞ BEDEN',
+    'HASARLI ÜRÜN',
+    'EKSİK ÜRÜN',
+    'FAZLA ÜRÜN',
+    'AMBALAJ HATASI',
+    'DİĞER',
+]
 
-def _date_filters(query, column):
-    baslangic = request.args.get('baslangic')
-    bitis = request.args.get('bitis')
-    if baslangic:
-        query = query.filter(column >= datetime.strptime(baslangic, '%Y-%m-%d'))
-    if bitis:
-        query = query.filter(column <= datetime.strptime(bitis, '%Y-%m-%d'))
-    return query
 
+def _parse_tarih_dd_mm_yyyy(tarih_str):
+    """DD.MM.YYYY veya YYYY-MM-DD formatını date objesine çevir"""
+    tarih_str = str(tarih_str or '').strip()
+    for fmt in ('%d.%m.%Y', '%Y-%m-%d'):
+        try:
+            return datetime.strptime(tarih_str, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def _to_dd_mm_yyyy(date_obj):
+    return date_obj.strftime('%d.%m.%Y')
+
+
+def _filter_kayitlar_by_range(sorgu, baslangic_str, bitis_str):
+    """Kayıt.tarih (DD.MM.YYYY string) üzerinde Python seviyesinde tarih filtresi"""
+    bas = _parse_tarih_dd_mm_yyyy(baslangic_str) if baslangic_str else None
+    bit = _parse_tarih_dd_mm_yyyy(bitis_str) if bitis_str else None
+    kayitlar = sorgu.all()
+    if not bas and not bit:
+        return kayitlar
+    result = []
+    for k in kayitlar:
+        kt = _parse_tarih_dd_mm_yyyy(k.tarih)
+        if kt is None:
+            continue
+        if bas and kt < bas:
+            continue
+        if bit and kt > bit:
+            continue
+        result.append(k)
+    return result
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SAYFA
+# ─────────────────────────────────────────────────────────────────────────────
 
 @raporlar_bp.route('/')
 def index():
-    return render_template('raporlar.html')
+    personeller = Personel.query.order_by(Personel.ad).all()
+    toplamalar = Toplama.query.order_by(Toplama.ad).all()
+    hata_tipleri = HATA_TIPLERI
+    return render_template('raporlar.html',
+                           personeller=personeller,
+                           toplamalar=toplamalar,
+                           hata_tipleri=hata_tipleri)
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ÖZET KARTI
+# ─────────────────────────────────────────────────────────────────────────────
+
+@raporlar_bp.route('/api/ozet')
+def ozet():
+    toplam_kayit = Kayit.query.count()
+    toplam_personel = Personel.query.count()
+    toplam_siparis = db.session.query(func.count(func.distinct(Order.siparis_no))).scalar() or 0
+    toplam_iade_hatasi = IadeHatasi.query.count()
+    toplam_senkronize = Order.query.filter_by(durum='TAMAMLANDI').count()
+
+    return jsonify({
+        'basarili': True,
+        'ozet': {
+            'toplam_kayit': toplam_kayit,
+            'toplam_personel': toplam_personel,
+            'toplam_siparis': toplam_siparis,
+            'toplam_iade_hatasi': toplam_iade_hatasi,
+            'toplam_senkronize': toplam_senkronize,
+        }
+    })
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# KAYITLAR RAPORU (filtrelenmiş)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@raporlar_bp.route('/listele', methods=['POST'])
+def listele():
+    """Kayıtlardan filtrelenmiş rapor — ürün ayrıntılarıyla"""
+    veri = request.get_json() or {}
+    personel_id = veri.get('personel_id')
+    toplama_id = veri.get('toplama_id')
+    baslangic = str(veri.get('tarih_baslangic') or '').strip()
+    bitis = str(veri.get('tarih_bitis') or '').strip()
+    arama = str(veri.get('arama') or '').strip().lower()
+
+    sorgu = Kayit.query
+    if personel_id:
+        sorgu = sorgu.filter(Kayit.personel_id == int(personel_id))
+    if toplama_id:
+        sorgu = sorgu.filter(Kayit.toplama_id == int(toplama_id))
+
+    kayitlar = _filter_kayitlar_by_range(sorgu, baslangic, bitis)
+    kayitlar.sort(key=lambda k: (_parse_tarih_dd_mm_yyyy(k.tarih) or datetime.min.date()), reverse=True)
+
+    sonuc = []
+    for k in kayitlar:
+        personel_adi = k.personel.ad if k.personel else '—'
+        toplama_adi = k.toplama.ad if k.toplama else '—'
+
+        if arama and arama not in personel_adi.lower() and arama not in toplama_adi.lower() and arama not in k.tarih:
+            continue
+
+        ayrintilari = [
+            {
+                'urun_kodu': a.urun_kodu,
+                'beden': a.beden or '—',
+                'adet': a.adet,
+            }
+            for a in k.ayrintilari
+        ]
+
+        sonuc.append({
+            'id': k.id,
+            'tarih': k.tarih,
+            'personel': personel_adi,
+            'personel_id': k.personel_id,
+            'toplama': toplama_adi,
+            'trendyol_siparis': int(k.trendyol_siparis or 0),
+            'trendyol_fatura': float(k.trendyol_fatura or 0),
+            'diger_pazar': float(k.diger_pazar or 0),
+            'toplam': int(k.trendyol_siparis or 0) + float(k.trendyol_fatura or 0) + float(k.diger_pazar or 0),
+            'senkronizasyon_sayisi': k.senkronizasyon_sayisi or 0,
+            'senkronizasyon_tarihi': k.son_senkronizasyon.strftime('%d.%m.%Y %H:%M') if k.son_senkronizasyon else '—',
+            'urun_detaylari': ayrintilari,
+            'urun_sayisi': len(ayrintilari),
+        })
+
+    return jsonify({'basarili': True, 'kayitlar': sonuc, 'toplam': len(sonuc)})
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PERSONEL İŞLEM TARİHÇESİ
+# ─────────────────────────────────────────────────────────────────────────────
+
+@raporlar_bp.route('/personel/islem-tarihcesi', methods=['POST'])
+def personel_islem_tarihcesi():
+    """Personel bazlı işlem tarihçesi — o tarihte ne yaptı?"""
+    veri = request.get_json() or {}
+    personel_id = veri.get('personel_id')
+    baslangic = str(veri.get('tarih_baslangic') or '').strip()
+    bitis = str(veri.get('tarih_bitis') or '').strip()
+
+    if not personel_id:
+        return jsonify({'basarili': False, 'mesaj': 'Personel seçimi zorunludur!'}), 400
+
+    personel = Personel.query.get(int(personel_id))
+    if not personel:
+        return jsonify({'basarili': False, 'mesaj': 'Personel bulunamadı!'}), 404
+
+    sorgu = Kayit.query.filter(Kayit.personel_id == int(personel_id))
+    kayitlar = _filter_kayitlar_by_range(sorgu, baslangic, bitis)
+    kayitlar.sort(key=lambda k: (_parse_tarih_dd_mm_yyyy(k.tarih) or datetime.min.date()), reverse=True)
+
+    tarihce = []
+    for k in kayitlar:
+        ayrintilari = k.ayrintilari
+        toplam_adet = sum(a.adet for a in ayrintilari)
+        urun_listesi = [
+            {'urun_kodu': a.urun_kodu, 'beden': a.beden or '—', 'adet': a.adet}
+            for a in ayrintilari
+        ]
+
+        # O tarihte o kişiye bağlı iade hataları
+        iade_hatalari = IadeHatasi.query.filter_by(
+            personel_id=int(personel_id),
+            tarih=k.tarih,
+        ).all()
+
+        tarihce.append({
+            'tarih': k.tarih,
+            'toplama': k.toplama.ad if k.toplama else '—',
+            'siparis_sayisi': int(k.trendyol_siparis or 0),
+            'urun_cesidi': len(urun_listesi),
+            'toplam_adet': toplam_adet,
+            'urunler': urun_listesi,
+            'iade_hata_sayisi': len(iade_hatalari),
+            'iade_hatalari': [ih.to_dict() for ih in iade_hatalari],
+            'senkronizasyon_sayisi': k.senkronizasyon_sayisi or 0,
+        })
+
+    # Genel özet
+    toplam_siparis = sum(t['siparis_sayisi'] for t in tarihce)
+    toplam_urun_adet = sum(t['toplam_adet'] for t in tarihce)
+    toplam_iade_hata = sum(t['iade_hata_sayisi'] for t in tarihce)
+
+    return jsonify({
+        'basarili': True,
+        'personel': {'id': personel.id, 'ad': personel.ad},
+        'tarihce': tarihce,
+        'ozet': {
+            'toplam_gun': len(tarihce),
+            'toplam_siparis': toplam_siparis,
+            'toplam_urun_adet': toplam_urun_adet,
+            'toplam_iade_hata': toplam_iade_hata,
+        }
+    })
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# İADE HATA KAYDI + LİSTELEME
+# ─────────────────────────────────────────────────────────────────────────────
+
+@raporlar_bp.route('/iade/kayit', methods=['POST'])
+def iade_kayit():
+    """İade hatası kaydı — tarih+ürün+hata tipi üzerinden personele/kayıda otomatik bağlan"""
+    veri = request.get_json() or {}
+    tarih_raw = str(veri.get('tarih') or '').strip()
+    urun_kodu = str(veri.get('urun_kodu') or '').strip() or None
+    beden = str(veri.get('beden') or '').strip() or None
+    hata_tipi = str(veri.get('hata_tipi') or '').strip()
+    aciklama = str(veri.get('aciklama') or '').strip() or None
+    siparis_no = str(veri.get('siparis_no') or '').strip() or None
+    toplama_id_raw = veri.get('toplama_id')
+
+    if not tarih_raw or not hata_tipi:
+        return jsonify({'basarili': False, 'mesaj': 'Tarih ve Hata Tipi zorunludur!'}), 400
+
+    tarih_obj = _parse_tarih_dd_mm_yyyy(tarih_raw)
+    if not tarih_obj:
+        return jsonify({'basarili': False, 'mesaj': 'Geçersiz tarih formatı!'}), 400
+
+    tarih_db = _to_dd_mm_yyyy(tarih_obj)
+    toplama_id = int(toplama_id_raw) if toplama_id_raw else None
+
+    # O tarihte kayıt olan personeli bul (iade senkronizasyonu)
+    kayit_sorgu = Kayit.query.filter_by(tarih=tarih_db)
+    if toplama_id:
+        kayit_sorgu = kayit_sorgu.filter_by(toplama_id=toplama_id)
+
+    kayit = kayit_sorgu.first()
+    personel_id = kayit.personel_id if kayit else None
+    kayit_id = kayit.id if kayit else None
+    baglanan_toplama_id = kayit.toplama_id if kayit else toplama_id
+
+    iade_hatasi = IadeHatasi(
+        tarih=tarih_db,
+        urun_kodu=urun_kodu,
+        beden=beden,
+        hata_tipi=hata_tipi,
+        aciklama=aciklama,
+        siparis_no=siparis_no,
+        personel_id=personel_id,
+        kayit_id=kayit_id,
+        toplama_id=baglanan_toplama_id,
+        olusturulma_tarihi=datetime.now(),
+    )
+    db.session.add(iade_hatasi)
+    db.session.commit()
+
+    personel_adi = iade_hatasi.personel.ad if iade_hatasi.personel else None
+    mesaj = f'İade hatası kaydedildi.'
+    if personel_adi:
+        mesaj += f' {tarih_db} tarihindeki kayda göre {personel_adi} adlı personele otomatik bağlandı.'
+    else:
+        mesaj += f' {tarih_db} tarihi için kayıt bulunamadı, personel bağlanamadı.'
+
+    return jsonify({'basarili': True, 'mesaj': mesaj, 'kayit': iade_hatasi.to_dict()})
+
+
+@raporlar_bp.route('/iade/listele', methods=['POST'])
+def iade_listele():
+    """İade hatalarını filtreli listele"""
+    veri = request.get_json() or {}
+    personel_id = veri.get('personel_id')
+    toplama_id = veri.get('toplama_id')
+    baslangic = str(veri.get('tarih_baslangic') or '').strip()
+    bitis = str(veri.get('tarih_bitis') or '').strip()
+    hata_tipi = str(veri.get('hata_tipi') or '').strip()
+
+    sorgu = IadeHatasi.query
+    if personel_id:
+        sorgu = sorgu.filter(IadeHatasi.personel_id == int(personel_id))
+    if toplama_id:
+        sorgu = sorgu.filter(IadeHatasi.toplama_id == int(toplama_id))
+    if hata_tipi:
+        sorgu = sorgu.filter(IadeHatasi.hata_tipi == hata_tipi)
+
+    tum_hatalar = sorgu.order_by(IadeHatasi.id.desc()).all()
+
+    bas = _parse_tarih_dd_mm_yyyy(baslangic) if baslangic else None
+    bit = _parse_tarih_dd_mm_yyyy(bitis) if bitis else None
+
+    sonuc = []
+    for ih in tum_hatalar:
+        if bas or bit:
+            kt = _parse_tarih_dd_mm_yyyy(ih.tarih)
+            if kt is None:
+                continue
+            if bas and kt < bas:
+                continue
+            if bit and kt > bit:
+                continue
+        sonuc.append(ih.to_dict())
+
+    return jsonify({'basarili': True, 'hatalar': sonuc, 'toplam': len(sonuc)})
+
+
+@raporlar_bp.route('/iade/sil/<int:iade_id>', methods=['DELETE'])
+def iade_sil(iade_id):
+    ih = IadeHatasi.query.get_or_404(iade_id)
+    db.session.delete(ih)
+    db.session.commit()
+    return jsonify({'basarili': True, 'mesaj': 'İade hatası silindi.'})
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MEVCUT API'LAR (değiştirilmedi)
+# ─────────────────────────────────────────────────────────────────────────────
 
 @raporlar_bp.route('/api/personel')
 def personel_raporu():
@@ -220,7 +527,7 @@ def baglanti_siparisler():
 
 @raporlar_bp.route('/api/baglanti/urunler', methods=['POST'])
 def baglanti_urunler():
-    """Ürünler raporu — kayıt ayıntıları üzerinden personel filtreli"""
+    """Ürünler raporu — kayıt ayrıntıları üzerinden personel filtreli"""
     from database import KayitAyrinti, Kayit as KayitModel
     veri = request.get_json() or {}
     personel_id = veri.get('personel_id')
@@ -273,3 +580,6 @@ def baglanti_kayitlar():
             'senkronizasyon_tarihi': k.son_senkronizasyon.strftime('%d.%m.%Y %H:%M') if k.son_senkronizasyon else '—',
         })
     return jsonify({'basarili': True, 'kayitlar': liste})
+
+
+

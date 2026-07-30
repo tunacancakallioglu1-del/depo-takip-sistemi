@@ -301,6 +301,48 @@ class AdetFiltresi(db.Model):
         }
 
 
+class IadeHatasi(db.Model):
+    """İade Hatası — Tarih + Ürün + Hata Tipi bazında personele/kayıda otomatik bağlanan hata kaydı"""
+    __tablename__ = 'iade_hatalari'
+    __table_args__ = (
+        db.Index('ix_iade_hatasi_tarih', 'tarih'),
+        db.Index('ix_iade_hatasi_personel', 'personel_id'),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    tarih = db.Column(db.String(10), nullable=False)  # DD.MM.YYYY
+    urun_kodu = db.Column(db.String(120), nullable=True)
+    beden = db.Column(db.String(50), nullable=True)
+    hata_tipi = db.Column(db.String(120), nullable=False)
+    aciklama = db.Column(db.Text, nullable=True)
+    siparis_no = db.Column(db.String(120), nullable=True)
+    # Otomatik bağlanan alanlar
+    personel_id = db.Column(db.Integer, db.ForeignKey('personeller.id'), nullable=True)
+    kayit_id = db.Column(db.Integer, db.ForeignKey('kayitlar.id'), nullable=True)
+    toplama_id = db.Column(db.Integer, db.ForeignKey('toplamalar.id'), nullable=True)
+    olusturulma_tarihi = db.Column(db.DateTime, default=datetime.now, nullable=False)
+
+    personel = db.relationship('Personel', backref=db.backref('iade_hatalari', lazy=True))
+    kayit = db.relationship('Kayit', backref=db.backref('iade_hatalari', lazy=True))
+    toplama = db.relationship('Toplama', backref=db.backref('iade_hatalari', lazy=True))
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'tarih': self.tarih,
+            'urun_kodu': self.urun_kodu or '',
+            'beden': self.beden or '',
+            'hata_tipi': self.hata_tipi,
+            'aciklama': self.aciklama or '',
+            'siparis_no': self.siparis_no or '',
+            'personel': self.personel.ad if self.personel else '—',
+            'personel_id': self.personel_id,
+            'kayit_id': self.kayit_id,
+            'toplama': self.toplama.ad if self.toplama else '—',
+            'olusturulma_tarihi': self.olusturulma_tarihi.strftime('%d.%m.%Y %H:%M'),
+        }
+
+
 class KayitAyrinti(db.Model):
     """Kayıt Ayrıntısı — Kayıt'ın ürün/beden/adet detayları"""
     __tablename__ = 'kayit_ayrintilari'
@@ -511,6 +553,25 @@ def veritabani_migrasyonu():
                 )
             '''))
             conn.execute(text('CREATE INDEX IF NOT EXISTS ix_kayit_ayrinti_kayit ON kayit_ayrintilari(kayit_id)'))
+
+        if 'iade_hatalari' not in existing_tables:
+            conn.execute(text('''
+                CREATE TABLE iade_hatalari (
+                    id INTEGER NOT NULL PRIMARY KEY,
+                    tarih VARCHAR(10) NOT NULL,
+                    urun_kodu VARCHAR(120),
+                    beden VARCHAR(50),
+                    hata_tipi VARCHAR(120) NOT NULL,
+                    aciklama TEXT,
+                    siparis_no VARCHAR(120),
+                    personel_id INTEGER REFERENCES personeller(id),
+                    kayit_id INTEGER REFERENCES kayitlar(id),
+                    toplama_id INTEGER REFERENCES toplamalar(id),
+                    olusturulma_tarihi DATETIME
+                )
+            '''))
+            conn.execute(text('CREATE INDEX IF NOT EXISTS ix_iade_hatasi_tarih ON iade_hatalari(tarih)'))
+            conn.execute(text('CREATE INDEX IF NOT EXISTS ix_iade_hatasi_personel ON iade_hatalari(personel_id)'))
 
         conn.commit()
     print("✓ Veritabanı migrasyonu tamamlandı")
