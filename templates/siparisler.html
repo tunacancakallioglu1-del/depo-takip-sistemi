@@ -111,6 +111,9 @@
         <button class="btn btn-primary btn-sm flex-grow-1" onclick="loadOrders(1)">🔍 Ara</button>
         <button class="btn btn-outline-secondary btn-sm" onclick="clearFilters()" title="Temizle">✕</button>
       </div>
+      <div class="col-12 col-md-2 d-grid">
+        <button class="btn btn-success btn-sm" onclick="tumSiparisleriGuncelle()">✏️ Tüm Siparişleri Güncelle</button>
+      </div>
       <div class="col-12 col-md-8 d-flex align-items-end">
         <span class="text-muted small" id="totalCount"></span>
       </div>
@@ -303,6 +306,32 @@ function clearFilters() {
     if (el) el.value = '';
   });
   loadOrders(1);
+}
+
+async function tumSiparisleriGuncelle() {
+  const tarih = document.getElementById('fTarihBasla')?.value?.trim();
+  if (!tarih) {
+    showAlert('warning', 'Lütfen tarih seçin (Tarih Başla).');
+    return;
+  }
+
+  confirmAction(`${tarih} tarihli tüm siparişler güncellenecek. Emin misiniz?`, async () => {
+    setLoading(true);
+    const { ok, data } = await apiFetch('/siparisler/guncelle', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tarih }),
+    });
+    setLoading(false);
+
+    if (ok && data?.basarili) {
+      showAlert('success', '✓ ' + (data.mesaj || 'Siparişler güncellendi'));
+      loadOrders(1);
+      loadStats();
+    } else {
+      showAlert('danger', '✗ ' + (data?.mesaj || 'Güncelleme başarısız'));
+    }
+  });
 }
 
 // ── Durum Rozeti ──────────────────────────────────────────────
@@ -654,4 +683,3 @@ loadStats();
 loadGecmis();
 </script>
 {% endblock %}
-

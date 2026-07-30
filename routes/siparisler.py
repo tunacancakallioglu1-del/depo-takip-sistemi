@@ -329,6 +329,45 @@ def api_list():
     return jsonify({'basarili': True, 'kayitlar': rows, 'toplam': pagination.total})
 
 
+@siparisler_bp.route('/listele', methods=['POST'])
+def listele_uyumlu():
+    """Eski/uyumlu endpoint: filtreye göre siparişleri döndür."""
+    data = request.json or {}
+    tarih_str = str(data.get('tarih', '')).strip()
+    durum = str(data.get('durum', '')).strip()
+
+    query = Order.query
+
+    if tarih_str:
+        try:
+            tarih = datetime.strptime(tarih_str, '%Y-%m-%d')
+            query = query.filter(
+                Order.tarih >= tarih,
+                Order.tarih < tarih + timedelta(days=1),
+            )
+        except ValueError:
+            return jsonify({'status': 'error', 'message': 'Tarih formatı geçersiz'}), 400
+
+    if durum:
+        query = query.filter(Order.durum == durum)
+
+    orders = query.order_by(Order.id.desc()).all()
+    siparisler = [{
+        'id': o.id,
+        'siparis_no': o.siparis_no,
+        'tarih': o.tarih.strftime('%Y-%m-%d') if o.tarih else None,
+        'urun_kodu': (o.urun.ana_kod if o.urun else o.urun_kodu_ham) or '',
+        'beden': o.beden or '',
+        'adet': o.adet,
+        'toplama': o.toplama.ad if o.toplama else '',
+        'personel': o.personel.ad if o.personel else '',
+        'durum': o.durum or 'BEKLEMEDE',
+        'hata_sebebi': o.hata_sebebi or '',
+    } for o in orders]
+
+    return jsonify({'status': 'success', 'siparisler': siparisler})
+
+
 @siparisler_bp.route('/api/<int:order_id>', methods=['GET'])
 def api_get(order_id):
     order = Order.query.get_or_404(order_id)
@@ -536,6 +575,69 @@ def guncelle_hatali_siparisler_route():
     })
 
 
+@siparisler_bp.route('/guncelle', methods=['POST'])
+def tum_siparisleri_guncelle():
+    """Seçili tarihteki tüm siparişleri yeniden doğrula ve güncelle."""
+    data = request.json or {}
+    tarih_str = str(data.get('tarih', '')).strip()
+    if not tarih_str:
+        return jsonify({'basarili': False, 'mesaj': 'Tarih gerekli'}), 400
+
+    try:
+        tarih = datetime.strptime(tarih_str, '%Y-%m-%d')
+    except ValueError:
+        return jsonify({'basarili': False, 'mesaj': 'Tarih formatı geçersiz'}), 400
+
+    ertesi_gun = tarih + timedelta(days=1)
+    siparisler = Order.query.filter(
+        Order.tarih >= tarih,
+        Order.tarih < ertesi_gun,
+    ).all()
+
+    if not siparisler:
+        return jsonify({'basarili': False, 'mesaj': 'Bu tarihte sipariş bulunamadı'}), 404
+
+    guncellenen = 0
+    duzeltilen = 0
+    hatali_kalan = 0
+
+    for siparis in siparisler:
+        if siparis.durum == 'TAMAMLANDI':
+            guncellenen += 1
+            continue
+
+        onceki_durum = siparis.durum
+        errors = _revalidate_order(siparis)
+
+        if errors:
+            siparis.durum = 'HATALI'
+            siparis.hata_sebebi = '; '.join(errors)
+            hatali_kalan += 1
+        else:
+            siparis.durum = 'BEKLEMEDE'
+            siparis.hata_sebebi = None
+            if onceki_durum != 'BEKLEMEDE':
+                duzeltilen += 1
+
+        guncellenen += 1
+
+    db.session.commit()
+    log_audit('tum_siparisler_guncellendi', 'orders', None, yeni_deger={
+        'tarih': tarih_str,
+        'guncellenen': guncellenen,
+        'duzeltilen': duzeltilen,
+        'hatali_kalan': hatali_kalan,
+    })
+
+    return jsonify({
+        'basarili': True,
+        'mesaj': f'{guncellenen} sipariş güncellendi. {duzeltilen} düzeltildi, {hatali_kalan} hatalı kaldı.',
+        'guncellenen': guncellenen,
+        'duzeltilen': duzeltilen,
+        'hatali_kalan': hatali_kalan,
+    })
+
+
 @siparisler_bp.route('/api/gecmis')
 def api_gecmis():
     uploads = ExcelUpload.query.filter_by(modul='siparis').order_by(
@@ -659,6 +761,20 @@ def api_siparis_detay(siparis_no):
         })
 
     return jsonify({'basarili': True, 'siparis': siparis_dict, 'urunler': urunler})
+
+
+@siparisler_bp.route('/<siparis_no>/detay')
+def siparis_detay_uyumlu(siparis_no):
+    """Eski/uyumlu endpoint: sipariş no detayını döndür."""
+    response, status_code = api_siparis_detay(siparis_no), 200
+    if isinstance(response, tuple):
+        response, status_code = response
+    data = response.get_json() or {}
+    if data.get('basarili'):
+        data['status'] = 'success'
+    else:
+        data['status'] = 'error'
+    return jsonify(data), status_code
 
 
 @siparisler_bp.route('/api/excel-indir')
