@@ -1,132 +1,308 @@
 {% extends 'base.html' %}
 {% block title %}Raporlar{% endblock %}
+{% block extra_css %}
+<style>
+  .rapor-ozet-card { border-radius: 12px; padding: 1.2rem 1.5rem; color: #fff; display: flex; align-items: center; gap: 1rem; }
+  .rapor-ozet-card .icon { font-size: 2.2rem; line-height: 1; }
+  .rapor-ozet-card .val { font-size: 1.7rem; font-weight: 700; line-height: 1.1; }
+  .rapor-ozet-card .lbl { font-size: 0.78rem; opacity: .85; }
+  .card-kayit   { background: linear-gradient(135deg,#4f46e5,#7c3aed); }
+  .card-siparis { background: linear-gradient(135deg,#0ea5e9,#0284c7); }
+  .card-personel{ background: linear-gradient(135deg,#10b981,#059669); }
+  .card-iade    { background: linear-gradient(135deg,#ef4444,#dc2626); }
+  .card-sync    { background: linear-gradient(135deg,#f59e0b,#d97706); }
+  .tab-header-strip { border-bottom: 2px solid #e5e7eb; margin-bottom: 1.25rem; }
+  .tab-header-strip .nav-link { border: none; border-radius: 8px 8px 0 0; font-weight: 500; color: #6b7280; padding: .55rem 1.1rem; }
+  .tab-header-strip .nav-link.active { background: #4f46e5; color: #fff; }
+  .filter-bar { background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 10px; padding: .85rem 1rem; margin-bottom: 1rem; }
+  .badge-hata { font-size: .7rem; padding: .25em .6em; }
+  .urun-detail-badge { background: #ede9fe; color: #4f46e5; border-radius: 6px; font-size: .75rem; padding: .2em .5em; margin: 1px; display: inline-block; }
+  .detail-toggle { cursor: pointer; color: #6366f1; font-size: .8rem; }
+  .detail-toggle:hover { text-decoration: underline; }
+  .tarihce-card { border-left: 4px solid #6366f1; border-radius: 8px; margin-bottom: .75rem; }
+  .tarihce-card.has-hata { border-left-color: #ef4444; }
+  #iadeModal .modal-header { background: linear-gradient(135deg,#ef4444,#dc2626); color:#fff; border-radius: 12px 12px 0 0; }
+  .empty-state { padding: 3rem 1rem; text-align: center; color: #9ca3af; }
+  .empty-state .icon { font-size: 3rem; }
+</style>
+{% endblock %}
 {% block content %}
 
-<div class="page-header">
-  <h1 class="page-title">📈 Raporlama Sistemi</h1>
+<div class="page-header d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4">
+  <h1 class="page-title mb-0">📈 Raporlama Sistemi</h1>
+  <span class="text-muted small">Kayıtlardan gerçek zamanlı senkronizasyon</span>
 </div>
 
-<!-- Tabs -->
-<ul class="nav nav-tabs section-tabs mb-3" id="raporTab">
-  <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#personelTab" onclick="loadPersonelRapor()">👤 Personel</button></li>
-  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#toplamTab" onclick="loadToplamRapor()">📦 Toplama</button></li>
-  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#urunTab" onclick="loadUrunRapor()">🏷️ Ürün</button></li>
-  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#iadeTab" onclick="loadIadeAnaliz()">↩️ İade Analiz</button></li>
-  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#gunlukTab" onclick="loadGunlukRapor()">📅 Günlük</button></li>
-  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#primTab" onclick="loadPrimRapor()">💰 Prim</button></li>
-  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#baglantiTab" onclick="loadBaglantiRapor()">🔗 Bağlantı</button></li>
+<!-- ÖZET KARTLARI -->
+<div class="row g-3 mb-4" id="ozetKartlari">
+  <div class="col-6 col-md-4 col-lg-2dot4">
+    <div class="rapor-ozet-card card-kayit shadow-sm">
+      <div class="icon">📋</div>
+      <div><div class="val" id="ozetKayit">—</div><div class="lbl">Toplam Kayıt</div></div>
+    </div>
+  </div>
+  <div class="col-6 col-md-4 col-lg-2dot4">
+    <div class="rapor-ozet-card card-siparis shadow-sm">
+      <div class="icon">🛒</div>
+      <div><div class="val" id="ozetSiparis">—</div><div class="lbl">Toplam Sipariş</div></div>
+    </div>
+  </div>
+  <div class="col-6 col-md-4 col-lg-2dot4">
+    <div class="rapor-ozet-card card-personel shadow-sm">
+      <div class="icon">👥</div>
+      <div><div class="val" id="ozetPersonel">—</div><div class="lbl">Personel Sayısı</div></div>
+    </div>
+  </div>
+  <div class="col-6 col-md-4 col-lg-2dot4">
+    <div class="rapor-ozet-card card-sync shadow-sm">
+      <div class="icon">✅</div>
+      <div><div class="val" id="ozetSync">—</div><div class="lbl">Senkronize Sipariş</div></div>
+    </div>
+  </div>
+  <div class="col-6 col-md-4 col-lg-2dot4">
+    <div class="rapor-ozet-card card-iade shadow-sm">
+      <div class="icon">⚠️</div>
+      <div><div class="val" id="ozetIade">—</div><div class="lbl">İade Hatası</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB NAVİGASYON -->
+<ul class="nav tab-header-strip" id="mainTab" role="tablist">
+  <li class="nav-item">
+    <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabKayitlar" onclick="loadKayitlarRapor()">📋 Kayıtlar Raporu</button>
+  </li>
+  <li class="nav-item">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabTarihce" onclick="initTarihce()">👤 Personel Tarihçesi</button>
+  </li>
+  <li class="nav-item">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabIade" onclick="loadIadeListesi()">↩️ İade Takibi</button>
+  </li>
+  <li class="nav-item">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabPrim" onclick="loadPrimRapor()">💰 Prim</button>
+  </li>
+  <li class="nav-item">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabDiger" onclick="loadDigerRaporlar()">📦 Diğer</button>
+  </li>
 </ul>
 
 <div class="tab-content">
 
-  <!-- Personel Raporu -->
-  <div class="tab-pane fade show active" id="personelTab">
+  <!-- ════════════════════════════════════════════════════════════
+       TAB 1 — KAYITLAR RAPORU
+  ════════════════════════════════════════════════════════════ -->
+  <div class="tab-pane fade show active" id="tabKayitlar">
+
+    <div class="filter-bar">
+      <div class="row g-2 align-items-end">
+        <div class="col-md-2">
+          <label class="form-label small mb-1">Başlangıç Tarihi</label>
+          <input type="date" class="form-control form-control-sm" id="krBaslangic">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small mb-1">Bitiş Tarihi</label>
+          <input type="date" class="form-control form-control-sm" id="krBitis">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small mb-1">Personel</label>
+          <select class="form-select form-select-sm" id="krPersonel">
+            <option value="">— Tüm Personel —</option>
+            {% for p in personeller %}
+            <option value="{{ p.id }}">{{ p.ad }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small mb-1">Toplama</label>
+          <select class="form-select form-select-sm" id="krToplama">
+            <option value="">— Tüm Toplamalar —</option>
+            {% for t in toplamalar %}
+            <option value="{{ t.id }}">{{ t.ad }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-2">
+          <button class="btn btn-primary btn-sm w-100" onclick="loadKayitlarRapor()">🔍 Filtrele</button>
+        </div>
+      </div>
+      <div class="row g-2 mt-1">
+        <div class="col-md-6">
+          <input type="text" class="form-control form-control-sm" id="krArama" placeholder="Personel / toplama adı ara..." oninput="loadKayitlarRapor()">
+        </div>
+        <div class="col-md-6 text-end">
+          <span class="text-muted small" id="krSonucSayisi"></span>
+        </div>
+      </div>
+    </div>
+
     <div class="card">
       <div class="card-header d-flex justify-content-between align-items-center">
-        <span>👤 Personel Raporu (Aylık)</span>
-        <a href="/raporlar/api/export?tip=personel" class="btn btn-success btn-sm">📥 Excel İndir</a>
+        <span><strong>📋 Kayıtlar Detay Raporu</strong></span>
+        <button class="btn btn-success btn-sm" onclick="exportKayitlarExcel()">📥 Excel İndir</button>
       </div>
       <div class="card-body p-0">
         <div class="table-responsive">
-          <table class="table mb-0">
-            <thead>
-              <tr><th>Personel</th><th>Sipariş Sayısı</th></tr>
+          <table class="table table-sm mb-0" id="krTable">
+            <thead class="table-dark">
+              <tr>
+                <th>Tarih</th>
+                <th>Personel</th>
+                <th>Toplama</th>
+                <th>Sipariş</th>
+                <th>Senkronizasyon</th>
+                <th>Ürün Detayları</th>
+                <th>İade Hataları</th>
+              </tr>
             </thead>
-            <tbody id="personelBody">
-              <tr><td colspan="2" class="text-center py-3 text-muted">Yükleniyor...</td></tr>
+            <tbody id="krBody">
+              <tr><td colspan="7" class="text-center py-4 text-muted">Filtreleme yapın veya bekleyin...</td></tr>
             </tbody>
           </table>
         </div>
       </div>
     </div>
-    <div class="card mt-3">
-      <div class="card-header">📊 Personel Performans Grafiği</div>
-      <div class="card-body"><canvas id="personelChart" height="100"></canvas></div>
-    </div>
   </div>
 
-  <!-- Toplama Raporu -->
-  <div class="tab-pane fade" id="toplamTab">
-    <div class="card">
-      <div class="card-header d-flex justify-content-between align-items-center">
-        <span>📦 Toplama Raporu</span>
-        <a href="/raporlar/api/export?tip=toplama" class="btn btn-success btn-sm">📥 Excel İndir</a>
-      </div>
-      <div class="card-body p-0">
-        <div class="table-responsive">
-          <table class="table mb-0">
-            <thead>
-              <tr><th>Toplama</th><th>Sipariş Sayısı</th><th>Farklı Ürün</th></tr>
-            </thead>
-            <tbody id="toplamBody">
-              <tr><td colspan="3" class="text-center py-3 text-muted">Yükleniyor...</td></tr>
-            </tbody>
-          </table>
+  <!-- ════════════════════════════════════════════════════════════
+       TAB 2 — PERSONEL TARİHÇESİ
+  ════════════════════════════════════════════════════════════ -->
+  <div class="tab-pane fade" id="tabTarihce">
+
+    <div class="filter-bar">
+      <div class="row g-2 align-items-end">
+        <div class="col-md-4">
+          <label class="form-label small mb-1">Personel Seç <span class="text-danger">*</span></label>
+          <select class="form-select form-select-sm" id="thPersonel">
+            <option value="">— Personel Seçin —</option>
+            {% for p in personeller %}
+            <option value="{{ p.id }}">{{ p.ad }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small mb-1">Başlangıç</label>
+          <input type="date" class="form-control form-control-sm" id="thBaslangic">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small mb-1">Bitiş</label>
+          <input type="date" class="form-control form-control-sm" id="thBitis">
+        </div>
+        <div class="col-md-2">
+          <button class="btn btn-primary btn-sm w-100" onclick="loadTarihce()">📊 Göster</button>
         </div>
       </div>
     </div>
-  </div>
 
-  <!-- Ürün Raporu -->
-  <div class="tab-pane fade" id="urunTab">
-    <div class="card">
-      <div class="card-header d-flex justify-content-between align-items-center">
-        <span>🏷️ Ürün Raporu</span>
-        <a href="/raporlar/api/export?tip=urun" class="btn btn-success btn-sm">📥 Excel İndir</a>
-      </div>
-      <div class="card-body p-0">
-        <div class="table-responsive">
-          <table class="table mb-0">
-            <thead>
-              <tr><th>Ürün Kodu</th><th>Marka</th><th>Sipariş Sayısı</th></tr>
-            </thead>
-            <tbody id="urunBody">
-              <tr><td colspan="3" class="text-center py-3 text-muted">Yükleniyor...</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- İade Analiz -->
-  <div class="tab-pane fade" id="iadeTab">
-    <div class="card">
-      <div class="card-header d-flex justify-content-between align-items-center">
-        <span>↩️ İade Neden Analizi</span>
-        <a href="/raporlar/api/export?tip=iade" class="btn btn-success btn-sm">📥 Excel İndir</a>
-      </div>
-      <div class="card-body">
-        <div class="row">
-          <div class="col-md-6">
-            <canvas id="iadeChart" height="200"></canvas>
+    <!-- Personel özet kartları -->
+    <div class="row g-3 mb-3" id="thOzetRow" style="display:none!important;">
+      <div class="col-md-3">
+        <div class="card text-center border-primary">
+          <div class="card-body py-2">
+            <div class="fw-bold text-primary fs-4" id="thOzetGun">0</div>
+            <div class="text-muted small">Çalışma Günü</div>
           </div>
-          <div class="col-md-6">
-            <table class="table table-sm">
-              <thead><tr><th>İade Sebebi</th><th>Adet</th></tr></thead>
-              <tbody id="iadeBody"></tbody>
-            </table>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="card text-center border-info">
+          <div class="card-body py-2">
+            <div class="fw-bold text-info fs-4" id="thOzetSiparis">0</div>
+            <div class="text-muted small">Toplam Sipariş</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="card text-center border-success">
+          <div class="card-body py-2">
+            <div class="fw-bold text-success fs-4" id="thOzetAdet">0</div>
+            <div class="text-muted small">Toplam Ürün Adedi</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="card text-center border-danger">
+          <div class="card-body py-2">
+            <div class="fw-bold text-danger fs-4" id="thOzetHata">0</div>
+            <div class="text-muted small">İade Hatası</div>
           </div>
         </div>
       </div>
     </div>
+
+    <div id="thContent">
+      <div class="empty-state">
+        <div class="icon">👤</div>
+        <p class="mt-2">Personel seçip <strong>Göster</strong> butonuna basın.</p>
+      </div>
+    </div>
   </div>
 
-  <!-- Günlük Rapor -->
-  <div class="tab-pane fade" id="gunlukTab">
-    <div class="card">
-      <div class="card-header d-flex justify-content-between align-items-center">
-        <span>📅 Günlük Kayıt Raporu (Personel)</span>
-        <a href="/raporlar/api/export?tip=gunluk_personel" class="btn btn-success btn-sm">📥 Excel İndir</a>
+  <!-- ════════════════════════════════════════════════════════════
+       TAB 3 — İADE TAKİBİ
+  ════════════════════════════════════════════════════════════ -->
+  <div class="tab-pane fade" id="tabIade">
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h5 class="mb-0">↩️ İade Hata Takibi</h5>
+      <button class="btn btn-danger btn-sm" data-bs-toggle="modal" data-bs-target="#iadeModal">
+        ➕ Yeni İade Hatası Kaydet
+      </button>
+    </div>
+
+    <div class="filter-bar">
+      <div class="row g-2 align-items-end">
+        <div class="col-md-2">
+          <label class="form-label small mb-1">Başlangıç</label>
+          <input type="date" class="form-control form-control-sm" id="ihBaslangic">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small mb-1">Bitiş</label>
+          <input type="date" class="form-control form-control-sm" id="ihBitis">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small mb-1">Personel</label>
+          <select class="form-select form-select-sm" id="ihPersonel">
+            <option value="">— Tüm Personel —</option>
+            {% for p in personeller %}
+            <option value="{{ p.id }}">{{ p.ad }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small mb-1">Hata Tipi</label>
+          <select class="form-select form-select-sm" id="ihHataTipi">
+            <option value="">— Tüm Tipler —</option>
+            {% for ht in hata_tipleri %}
+            <option value="{{ ht }}">{{ ht }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-2">
+          <button class="btn btn-primary btn-sm w-100" onclick="loadIadeListesi()">🔍 Filtrele</button>
+        </div>
       </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><strong>İade Hata Listesi</strong> — <span id="ihSayisi" class="text-muted small">yükleniyor...</span></div>
       <div class="card-body p-0">
         <div class="table-responsive">
-          <table class="table mb-0">
-            <thead>
-              <tr><th>Personel</th><th>Tarih</th><th>Toplama</th><th>Trendyol Sipariş</th><th>Trendyol Fatura</th><th>Diğer Pazar</th><th>Toplam</th></tr>
+          <table class="table table-sm mb-0">
+            <thead class="table-dark">
+              <tr>
+                <th>Tarih</th>
+                <th>Personel</th>
+                <th>Toplama</th>
+                <th>Ürün Kodu</th>
+                <th>Beden</th>
+                <th>Hata Tipi</th>
+                <th>Açıklama</th>
+                <th>Sipariş No</th>
+                <th></th>
+              </tr>
             </thead>
-            <tbody id="gunlukBody">
-              <tr><td colspan="7" class="text-center py-3 text-muted">Yükleniyor...</td></tr>
+            <tbody id="ihBody">
+              <tr><td colspan="9" class="text-center py-4 text-muted">Yükleniyor...</td></tr>
             </tbody>
           </table>
         </div>
@@ -134,8 +310,10 @@
     </div>
   </div>
 
-  <!-- Prim Raporu -->
-  <div class="tab-pane fade" id="primTab">
+  <!-- ════════════════════════════════════════════════════════════
+       TAB 4 — PRİM
+  ════════════════════════════════════════════════════════════ -->
+  <div class="tab-pane fade" id="tabPrim">
     <div class="card mb-3">
       <div class="card-header">💰 Prim Hesaplama Parametreleri</div>
       <div class="card-body">
@@ -162,126 +340,459 @@
       <div class="card-body p-0">
         <div class="table-responsive">
           <table class="table mb-0">
-            <thead>
-              <tr><th>Personel</th><th>Sipariş</th><th>Ürün</th><th>İade</th><th>Prim (₺)</th></tr>
-            </thead>
-            <tbody id="primBody">
-              <tr><td colspan="5" class="text-center py-3 text-muted">Hesaplayın...</td></tr>
-            </tbody>
+            <thead><tr><th>Personel</th><th>Sipariş</th><th>Ürün</th><th>İade</th><th>Prim (₺)</th></tr></thead>
+            <tbody id="primBody"><tr><td colspan="5" class="text-center py-3 text-muted">Hesaplayın...</td></tr></tbody>
           </table>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Bağlantı Raporu -->
-  <div class="tab-pane fade" id="baglantiTab">
-
-    <!-- Personel Filtresi -->
-    <div class="card mb-3 border-primary">
-      <div class="card-header bg-primary bg-opacity-10">
-        <strong>👤 Personel Filtresi — İsim ile Bağlantılı Raporlar</strong>
-      </div>
-      <div class="card-body py-2">
-        <div class="row g-2 align-items-end">
-          <div class="col-md-5" style="position:relative;">
-            <label class="form-label small mb-1">Personel Ara:</label>
-            <input type="text" class="form-control form-control-sm" id="baglantiIsimArama"
-              placeholder="İsim yazın..." autocomplete="off" oninput="baglantiIsimAra(this.value)">
-            <div id="baglantiIsimOneriler" class="list-group" style="
-              position:absolute; top:100%; left:0; right:0; z-index:1050;
-              display:none; max-height:200px; overflow-y:auto;
-              border:1px solid #dee2e6; border-radius:0 0 4px 4px; background:#fff;
-            "></div>
+  <!-- ════════════════════════════════════════════════════════════
+       TAB 5 — DİĞER RAPORLAR
+  ════════════════════════════════════════════════════════════ -->
+  <div class="tab-pane fade" id="tabDiger">
+    <ul class="nav nav-pills mb-3" id="digerPill">
+      <li class="nav-item"><button class="nav-link active" data-bs-toggle="pill" data-bs-target="#dpPersonel" onclick="loadPersonelRapor()">👤 Personel</button></li>
+      <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#dpToplama" onclick="loadToplamRapor()">📦 Toplama</button></li>
+      <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#dpUrun" onclick="loadUrunRapor()">🏷️ Ürün</button></li>
+      <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#dpIadeAnaliz" onclick="loadIadeAnaliz()">↩️ İade Analiz</button></li>
+      <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#dpGunluk" onclick="loadGunlukRapor()">📅 Günlük</button></li>
+    </ul>
+    <div class="tab-content">
+      <!-- Personel -->
+      <div class="tab-pane fade show active" id="dpPersonel">
+        <div class="card">
+          <div class="card-header d-flex justify-content-between">
+            <span>👤 Personel Raporu</span>
+            <a href="/raporlar/api/export?tip=personel" class="btn btn-success btn-sm">📥 Excel</a>
           </div>
-          <div class="col-md-4">
-            <div id="baglantiSecilenDurum" class="small" style="display:none;"></div>
+          <div class="card-body p-0">
+            <table class="table mb-0">
+              <thead><tr><th>Personel</th><th>Sipariş Sayısı</th><th>Ürün Sayısı</th></tr></thead>
+              <tbody id="personelBody"><tr><td colspan="3" class="text-center py-3 text-muted">Yükleniyor...</td></tr></tbody>
+            </table>
           </div>
-          <div class="col-md-3">
-            <button class="btn btn-secondary btn-sm w-100" onclick="baglantiSifirla()">↺ Tümünü Göster</button>
+        </div>
+        <div class="card mt-3">
+          <div class="card-header">📊 Personel Performans Grafiği</div>
+          <div class="card-body"><canvas id="personelChart" height="100"></canvas></div>
+        </div>
+      </div>
+      <!-- Toplama -->
+      <div class="tab-pane fade" id="dpToplama">
+        <div class="card">
+          <div class="card-header d-flex justify-content-between">
+            <span>📦 Toplama Raporu</span>
+            <a href="/raporlar/api/export?tip=toplama" class="btn btn-success btn-sm">📥 Excel</a>
+          </div>
+          <div class="card-body p-0">
+            <table class="table mb-0">
+              <thead><tr><th>Toplama</th><th>Sipariş Sayısı</th><th>Farklı Ürün</th></tr></thead>
+              <tbody id="toplamBody"><tr><td colspan="3" class="text-center py-3 text-muted">Yükleniyor...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <!-- Ürün -->
+      <div class="tab-pane fade" id="dpUrun">
+        <div class="card">
+          <div class="card-header d-flex justify-content-between">
+            <span>🏷️ Ürün Raporu</span>
+            <a href="/raporlar/api/export?tip=urun" class="btn btn-success btn-sm">📥 Excel</a>
+          </div>
+          <div class="card-body p-0">
+            <table class="table mb-0">
+              <thead><tr><th>Ürün Kodu</th><th>Marka</th><th>Sipariş Sayısı</th></tr></thead>
+              <tbody id="urunBody"><tr><td colspan="3" class="text-center py-3 text-muted">Yükleniyor...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <!-- İade Analiz -->
+      <div class="tab-pane fade" id="dpIadeAnaliz">
+        <div class="card">
+          <div class="card-header d-flex justify-content-between">
+            <span>↩️ İade Neden Analizi</span>
+            <a href="/raporlar/api/export?tip=iade" class="btn btn-success btn-sm">📥 Excel</a>
+          </div>
+          <div class="card-body">
+            <div class="row">
+              <div class="col-md-6"><canvas id="iadeChart" height="200"></canvas></div>
+              <div class="col-md-6">
+                <table class="table table-sm">
+                  <thead><tr><th>İade Sebebi</th><th>Adet</th></tr></thead>
+                  <tbody id="iadeBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Günlük -->
+      <div class="tab-pane fade" id="dpGunluk">
+        <div class="card">
+          <div class="card-header d-flex justify-content-between">
+            <span>📅 Günlük Kayıt Raporu (Personel)</span>
+            <a href="/raporlar/api/export?tip=gunluk_personel" class="btn btn-success btn-sm">📥 Excel</a>
+          </div>
+          <div class="card-body p-0">
+            <table class="table mb-0">
+              <thead><tr><th>Personel</th><th>Tarih</th><th>Toplama</th><th>T.Sipariş</th><th>T.Fatura</th><th>Diğer Pazar</th><th>Toplam</th></tr></thead>
+              <tbody id="gunlukBody"><tr><td colspan="7" class="text-center py-3 text-muted">Yükleniyor...</td></tr></tbody>
+            </table>
           </div>
         </div>
       </div>
     </div>
-
-    <!-- Siparişler Raporu -->
-    <div class="card mb-3">
-      <div class="card-header"><strong>📦 Siparişler Raporu</strong></div>
-      <div class="card-body p-0">
-        <div class="table-responsive">
-          <table class="table table-sm mb-0">
-            <thead>
-              <tr>
-                <th>Tarih</th><th>Personel</th><th>Toplama</th>
-                <th>Sipariş No</th><th>Ürün Kodu</th><th>Beden</th><th>Durum</th>
-              </tr>
-            </thead>
-            <tbody id="baglantiSiparislerBody">
-              <tr><td colspan="7" class="text-center py-3 text-muted">Yükleniyor...</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
-    <!-- Ürünler Raporu -->
-    <div class="card mb-3">
-      <div class="card-header"><strong>🏭 Ürünler Raporu (Kayıt Ayrıntıları)</strong></div>
-      <div class="card-body p-0">
-        <div class="table-responsive">
-          <table class="table table-sm mb-0">
-            <thead>
-              <tr>
-                <th>Tarih</th><th>Personel</th><th>Ürün Kodu</th>
-                <th>Toplama</th><th>Beden</th><th>Adet</th>
-              </tr>
-            </thead>
-            <tbody id="baglantiUrunlerBody">
-              <tr><td colspan="6" class="text-center py-3 text-muted">Yükleniyor...</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
-    <!-- Kayıtlar Raporu -->
-    <div class="card mb-3">
-      <div class="card-header"><strong>📊 Kayıtlar Raporu</strong></div>
-      <div class="card-body p-0">
-        <div class="table-responsive">
-          <table class="table table-sm mb-0">
-            <thead>
-              <tr>
-                <th>Tarih</th><th>Personel</th><th>Toplama</th>
-                <th>Sipariş Sayısı</th><th>Senkronizasyon</th><th>Senkronizasyon Tarihi</th>
-              </tr>
-            </thead>
-            <tbody id="baglantiKayitlarBody">
-              <tr><td colspan="6" class="text-center py-3 text-muted">Yükleniyor...</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
   </div>
 
 </div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     İADE KAYIT MODAL
+═══════════════════════════════════════════════════════════ -->
+<div class="modal fade" id="iadeModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content" style="border-radius:12px;">
+      <div class="modal-header">
+        <h5 class="modal-title">⚠️ İade Hatası Kaydet</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-info small py-2 mb-3">
+          💡 <strong>Otomatik Senkronizasyon:</strong> Girilen tarih ve toplama bilgisine göre o günkü kayıt bulunur ve ilgili personele otomatik bağlanır.
+        </div>
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label">Tarih <span class="text-danger">*</span></label>
+            <input type="date" class="form-control" id="imTarih" required>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Toplama (Opsiyonel)</label>
+            <select class="form-select" id="imToplama">
+              <option value="">— Seçin —</option>
+              {% for t in toplamalar %}
+              <option value="{{ t.id }}">{{ t.ad }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Hata Tipi <span class="text-danger">*</span></label>
+            <select class="form-select" id="imHataTipi" required>
+              <option value="">— Seçin —</option>
+              {% for ht in hata_tipleri %}
+              <option value="{{ ht }}">{{ ht }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Ürün Kodu</label>
+            <input type="text" class="form-control" id="imUrunKodu" placeholder="Opsiyonel">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Beden</label>
+            <input type="text" class="form-control" id="imBeden" placeholder="Opsiyonel">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Sipariş No</label>
+            <input type="text" class="form-control" id="imSiparisNo" placeholder="Opsiyonel">
+          </div>
+          <div class="col-12">
+            <label class="form-label">Açıklama</label>
+            <textarea class="form-control" id="imAciklama" rows="2" placeholder="Hata detayı..."></textarea>
+          </div>
+        </div>
+        <div id="imSonuc" class="mt-3" style="display:none;"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+        <button type="button" class="btn btn-danger" onclick="iadeKaydet()">💾 Kaydet &amp; Bağla</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 {% block extra_js %}
 <script>
+// ─── CSS helper ────────────────────────────────────────────────────────────
+(function(){
+  const style = document.createElement('style');
+  style.textContent = '.col-lg-2dot4{flex:0 0 auto;width:20%}@media(max-width:992px){.col-lg-2dot4{width:50%}}';
+  document.head.appendChild(style);
+})();
+
 let personelChartInstance = null;
 let iadeChartInstance = null;
 
+// ─── Özet Kartları ─────────────────────────────────────────────────────────
+async function loadOzet() {
+  const { data } = await apiFetch('/raporlar/api/ozet');
+  if (!data.basarili) return;
+  const o = data.ozet;
+  document.getElementById('ozetKayit').textContent   = formatNumber(o.toplam_kayit);
+  document.getElementById('ozetSiparis').textContent = formatNumber(o.toplam_siparis);
+  document.getElementById('ozetPersonel').textContent= formatNumber(o.toplam_personel);
+  document.getElementById('ozetSync').textContent    = formatNumber(o.toplam_senkronize);
+  document.getElementById('ozetIade').textContent    = formatNumber(o.toplam_iade_hatasi);
+}
+
+// ─── KAYITLAR RAPORU ───────────────────────────────────────────────────────
+let _krData = [];
+async function loadKayitlarRapor() {
+  const body = {
+    tarih_baslangic: document.getElementById('krBaslangic').value,
+    tarih_bitis:     document.getElementById('krBitis').value,
+    personel_id:     document.getElementById('krPersonel').value || null,
+    toplama_id:      document.getElementById('krToplama').value || null,
+    arama:           document.getElementById('krArama').value,
+  };
+  const { data } = await apiFetch('/raporlar/listele', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!data.basarili) return;
+  _krData = data.kayitlar;
+  renderKayitlarTable(_krData);
+  document.getElementById('krSonucSayisi').textContent = `${data.toplam} kayıt`;
+}
+
+function renderKayitlarTable(kayitlar) {
+  const tbody = document.getElementById('krBody');
+  if (!kayitlar.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="empty-state"><div class="icon">📭</div><p>Kayıt bulunamadı</p></td></tr>';
+    return;
+  }
+  tbody.innerHTML = kayitlar.map((k, idx) => {
+    const syncBadge = k.senkronizasyon_sayisi > 0
+      ? `<span class="badge bg-success">${k.senkronizasyon_sayisi}× Sync</span>`
+      : '<span class="badge bg-secondary">Manuel</span>';
+    const syncDate = k.senkronizasyon_sayisi > 0 ? `<br><small class="text-muted">${k.senkronizasyon_tarihi}</small>` : '';
+
+    let urunHtml = '—';
+    if (k.urun_detaylari && k.urun_detaylari.length) {
+      const shown = k.urun_detaylari.slice(0, 3);
+      const more  = k.urun_detaylari.length - 3;
+      urunHtml = shown.map(u => `<span class="urun-detail-badge">${u.urun_kodu} ${u.beden !== '—' ? u.beden : ''} ×${u.adet}</span>`).join(' ');
+      if (more > 0) urunHtml += ` <span class="detail-toggle" onclick="toggleUrunDetay(${idx})">+${more} daha</span>`;
+      if (k.urun_detaylari.length > 3) {
+        urunHtml += `<div id="urunDetay${idx}" style="display:none;margin-top:4px;">${
+          k.urun_detaylari.slice(3).map(u => `<span class="urun-detail-badge">${u.urun_kodu} ${u.beden !== '—' ? u.beden : ''} ×${u.adet}</span>`).join(' ')
+        }</div>`;
+      }
+    }
+
+    const iadeCount = 0; // will be enriched if needed
+    const personelBadge = k.personel !== '—'
+      ? `<span class="badge bg-primary-soft text-primary">${k.personel}</span>`
+      : '<span class="text-muted">—</span>';
+
+    return `<tr>
+      <td><strong>${k.tarih}</strong></td>
+      <td>${personelBadge}</td>
+      <td>${k.toplama}</td>
+      <td><span class="badge bg-info text-dark">${formatNumber(k.trendyol_siparis)}</span></td>
+      <td>${syncBadge}${syncDate}</td>
+      <td>${urunHtml}</td>
+      <td>—</td>
+    </tr>`;
+  }).join('');
+}
+
+function toggleUrunDetay(idx) {
+  const el = document.getElementById('urunDetay' + idx);
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+async function exportKayitlarExcel() {
+  const bas = document.getElementById('krBaslangic').value;
+  const bit = document.getElementById('krBitis').value;
+  if (!bas || !bit) {
+    showAlert('Excel için tarih aralığı zorunludur!', 'warning');
+    return;
+  }
+  const { data } = await apiFetch('/kayitlar/api/excel-export', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ baslangic_tarihi: bas, bitis_tarihi: bit }),
+  });
+  if (!data.basarili) { showAlert(data.mesaj, 'danger'); return; }
+  window.location.href = '/kayitlar/api/excel-export';
+}
+
+// ─── PERSONEL TARİHÇESİ ────────────────────────────────────────────────────
+function initTarihce() {
+  if (!document.getElementById('thPersonel').value) {
+    document.getElementById('thContent').innerHTML = `<div class="empty-state"><div class="icon">👤</div><p class="mt-2">Personel seçip <strong>Göster</strong> butonuna basın.</p></div>`;
+  }
+}
+
+async function loadTarihce() {
+  const personelId = document.getElementById('thPersonel').value;
+  if (!personelId) { showAlert('Lütfen personel seçin!', 'warning'); return; }
+  const bas = document.getElementById('thBaslangic').value;
+  const bit = document.getElementById('thBitis').value;
+  const { data } = await apiFetch('/raporlar/personel/islem-tarihcesi', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ personel_id: personelId, tarih_baslangic: bas, tarih_bitis: bit }),
+  });
+  if (!data.basarili) { showAlert(data.mesaj, 'danger'); return; }
+
+  // Özet
+  const ozRow = document.getElementById('thOzetRow');
+  ozRow.style.setProperty('display', 'flex', 'important');
+  const o = data.ozet;
+  document.getElementById('thOzetGun').textContent     = formatNumber(o.toplam_gun);
+  document.getElementById('thOzetSiparis').textContent = formatNumber(o.toplam_siparis);
+  document.getElementById('thOzetAdet').textContent    = formatNumber(o.toplam_urun_adet);
+  document.getElementById('thOzetHata').textContent    = formatNumber(o.toplam_iade_hata);
+
+  const content = document.getElementById('thContent');
+  if (!data.tarihce.length) {
+    content.innerHTML = `<div class="empty-state"><div class="icon">📭</div><p>${data.personel.ad} için kayıt bulunamadı.</p></div>`;
+    return;
+  }
+
+  content.innerHTML = data.tarihce.map(t => {
+    const hasHata = t.iade_hata_sayisi > 0;
+    const urunlerHtml = t.urunler.map(u =>
+      `<span class="urun-detail-badge">${u.urun_kodu} ${u.beden !== '—' ? u.beden : ''} ×${u.adet}</span>`
+    ).join(' ') || '<span class="text-muted small">Ürün detayı yok</span>';
+
+    let iadeHtml = '';
+    if (hasHata) {
+      iadeHtml = `<div class="mt-2 p-2 bg-danger bg-opacity-10 rounded small">
+        <strong class="text-danger">⚠️ ${t.iade_hata_sayisi} İade Hatası:</strong>
+        ${t.iade_hatalari.map(ih =>
+          `<div class="ms-2 mt-1">• <strong>${ih.hata_tipi}</strong>${ih.urun_kodu ? ' | ' + ih.urun_kodu : ''}${ih.beden ? ' ' + ih.beden : ''}${ih.aciklama ? ' — ' + ih.aciklama : ''}</div>`
+        ).join('')}
+      </div>`;
+    }
+
+    return `<div class="card tarihce-card ${hasHata ? 'has-hata' : ''} mb-2">
+      <div class="card-body py-2 px-3">
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+          <div>
+            <strong>${t.tarih}</strong>
+            <span class="badge bg-secondary ms-2">${t.toplama}</span>
+            ${hasHata ? '<span class="badge bg-danger ms-1">⚠️ Hata Var</span>' : ''}
+          </div>
+          <div class="d-flex gap-3 text-center">
+            <div><div class="fw-bold text-info">${t.siparis_sayisi}</div><div class="text-muted" style="font-size:.7rem">Sipariş</div></div>
+            <div><div class="fw-bold text-success">${t.urun_cesidi}</div><div class="text-muted" style="font-size:.7rem">Ürün Çeşidi</div></div>
+            <div><div class="fw-bold text-primary">${t.toplam_adet}</div><div class="text-muted" style="font-size:.7rem">Toplam Adet</div></div>
+            <div><div class="fw-bold ${hasHata ? 'text-danger' : 'text-muted'}">${t.iade_hata_sayisi}</div><div class="text-muted" style="font-size:.7rem">Hata</div></div>
+          </div>
+        </div>
+        <div class="mt-2">${urunlerHtml}</div>
+        ${iadeHtml}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ─── İADE LİSTESİ ──────────────────────────────────────────────────────────
+async function loadIadeListesi() {
+  const body = {
+    tarih_baslangic: document.getElementById('ihBaslangic').value,
+    tarih_bitis:     document.getElementById('ihBitis').value,
+    personel_id:     document.getElementById('ihPersonel').value || null,
+    hata_tipi:       document.getElementById('ihHataTipi').value || null,
+  };
+  const { data } = await apiFetch('/raporlar/iade/listele', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!data.basarili) return;
+
+  document.getElementById('ihSayisi').textContent = `${data.toplam} kayıt`;
+  const tbody = document.getElementById('ihBody');
+  if (!data.hatalar.length) {
+    tbody.innerHTML = '<tr><td colspan="9" class="empty-state"><div class="icon">📭</div><p>İade hatası bulunamadı</p></td></tr>';
+    return;
+  }
+  tbody.innerHTML = data.hatalar.map(h => {
+    const hataBadgeColor = {
+      'YANLIŞ ÜRÜN': 'bg-danger',
+      'YANLIŞ BEDEN': 'bg-warning text-dark',
+      'HASARLI ÜRÜN': 'bg-dark',
+      'EKSİK ÜRÜN':  'bg-info text-dark',
+      'FAZLA ÜRÜN':  'bg-primary',
+    }[h.hata_tipi] || 'bg-secondary';
+    return `<tr>
+      <td><strong>${h.tarih}</strong></td>
+      <td>${h.personel !== '—' ? `<span class="badge bg-primary-soft text-primary">${h.personel}</span>` : '<span class="text-muted">Bağlanamadı</span>'}</td>
+      <td>${h.toplama !== '—' ? h.toplama : '—'}</td>
+      <td>${h.urun_kodu || '—'}</td>
+      <td>${h.beden || '—'}</td>
+      <td><span class="badge ${hataBadgeColor}">${h.hata_tipi}</span></td>
+      <td>${h.aciklama || '—'}</td>
+      <td>${h.siparis_no || '—'}</td>
+      <td><button class="btn btn-outline-danger btn-sm py-0 px-1" onclick="iadeSil(${h.id})">🗑</button></td>
+    </tr>`;
+  }).join('');
+}
+
+// ─── İADE KAYDET ───────────────────────────────────────────────────────────
+async function iadeKaydet() {
+  const tarih    = document.getElementById('imTarih').value;
+  const hataTipi = document.getElementById('imHataTipi').value;
+  if (!tarih || !hataTipi) { showAlert('Tarih ve Hata Tipi zorunludur!', 'warning'); return; }
+
+  const body = {
+    tarih:      tarih,
+    toplama_id: document.getElementById('imToplama').value || null,
+    hata_tipi:  hataTipi,
+    urun_kodu:  document.getElementById('imUrunKodu').value || null,
+    beden:      document.getElementById('imBeden').value || null,
+    siparis_no: document.getElementById('imSiparisNo').value || null,
+    aciklama:   document.getElementById('imAciklama').value || null,
+  };
+
+  const { data } = await apiFetch('/raporlar/iade/kayit', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  const sonucDiv = document.getElementById('imSonuc');
+  sonucDiv.style.display = 'block';
+  if (data.basarili) {
+    sonucDiv.innerHTML = `<div class="alert alert-success py-2">${data.mesaj}</div>`;
+    // Formu temizle (tarihi koru)
+    ['imToplama','imHataTipi','imUrunKodu','imBeden','imSiparisNo','imAciklama'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el.tagName === 'SELECT') el.value = '';
+      else el.value = '';
+    });
+    loadOzet();
+    loadIadeListesi();
+  } else {
+    sonucDiv.innerHTML = `<div class="alert alert-danger py-2">${data.mesaj || 'Hata oluştu!'}</div>`;
+  }
+}
+
+async function iadeSil(id) {
+  if (!confirm('Bu iade hatasını silmek istediğinize emin misiniz?')) return;
+  const { data } = await apiFetch(`/raporlar/iade/sil/${id}`, { method: 'DELETE' });
+  if (data.basarili) { loadIadeListesi(); loadOzet(); showAlert('Silindi.', 'success'); }
+  else showAlert(data.mesaj, 'danger');
+}
+
+// ─── DİĞER RAPORLAR ────────────────────────────────────────────────────────
 async function loadPersonelRapor() {
   const { data } = await apiFetch('/raporlar/api/personel');
   if (!data.basarili) return;
-
   document.getElementById('personelBody').innerHTML = data.veri.map(row => `
     <tr>
       <td><strong>${row.personel}</strong></td>
       <td>${formatNumber(row.siparis_sayisi)}</td>
-    </tr>`).join('') || '<tr><td colspan="2" class="text-center text-muted">Veri yok</td></tr>';
+      <td>${formatNumber(row.urun_sayisi)}</td>
+    </tr>`).join('') || '<tr><td colspan="3" class="text-center text-muted">Veri yok</td></tr>';
 
   if (personelChartInstance) personelChartInstance.destroy();
   personelChartInstance = new Chart(document.getElementById('personelChart'), {
@@ -290,6 +801,7 @@ async function loadPersonelRapor() {
       labels: data.veri.map(r => r.personel),
       datasets: [
         { label: 'Sipariş', data: data.veri.map(r => r.siparis_sayisi), backgroundColor: 'rgba(99,102,241,0.75)' },
+        { label: 'Ürün',    data: data.veri.map(r => r.urun_sayisi),    backgroundColor: 'rgba(16,185,129,0.75)' },
       ]
     },
     options: { responsive: true, plugins: { legend: { position: 'top' } } }
@@ -321,20 +833,21 @@ async function loadUrunRapor() {
 async function loadIadeAnaliz() {
   const { data } = await apiFetch('/raporlar/api/iade-analiz');
   if (!data.basarili) return;
-
-  document.getElementById('iadeBody').innerHTML = data.veri.map(row => `
-    <tr><td>${row.sebep}</td><td>${formatNumber(row.adet)}</td></tr>`).join('') || '<tr><td colspan="2" class="text-center text-muted">Veri yok</td></tr>';
-
+  document.getElementById('iadeBody').innerHTML = data.veri.map(row =>
+    `<tr><td>${row.sebep}</td><td>${formatNumber(row.adet)}</td></tr>`
+  ).join('') || '<tr><td colspan="2" class="text-center text-muted">Veri yok</td></tr>';
   if (iadeChartInstance) iadeChartInstance.destroy();
-  iadeChartInstance = new Chart(document.getElementById('iadeChart'), {
-    type: 'doughnut',
-    data: {
-      labels: data.veri.map(r => r.sebep),
-      datasets: [{ data: data.veri.map(r => r.adet),
-        backgroundColor: ['#6366f1','#10b981','#f59e0b','#ef4444','#8b5cf6','#3b82f6','#ec4899'] }]
-    },
-    options: { responsive: true }
-  });
+  if (data.veri.length) {
+    iadeChartInstance = new Chart(document.getElementById('iadeChart'), {
+      type: 'doughnut',
+      data: {
+        labels: data.veri.map(r => r.sebep),
+        datasets: [{ data: data.veri.map(r => r.adet),
+          backgroundColor: ['#6366f1','#10b981','#f59e0b','#ef4444','#8b5cf6','#3b82f6','#ec4899'] }]
+      },
+      options: { responsive: true }
+    });
+  }
 }
 
 async function loadGunlukRapor() {
@@ -357,7 +870,6 @@ async function loadPrimRapor() {
   const pu = document.getElementById('primUrun').value || 0;
   const { data } = await apiFetch(`/raporlar/api/prim?prim_siparis=${ps}&prim_urun=${pu}`);
   if (!data.basarili) return;
-
   let toplam = 0;
   document.getElementById('primBody').innerHTML = data.veri.map(row => {
     toplam += row.prim;
@@ -368,105 +880,15 @@ async function loadPrimRapor() {
       <td>${formatNumber(row.iade_sayisi)}</td>
       <td><strong class="text-success">${row.prim.toFixed(2)} ₺</strong></td>
     </tr>`;
-  }).join('') + `<tr class="table-active fw-bold">
-    <td colspan="4">TOPLAM</td>
-    <td class="text-success">${toplam.toFixed(2)} ₺</td>
-  </tr>`;
+  }).join('') + `<tr class="table-active fw-bold"><td colspan="4">TOPLAM</td><td class="text-success">${toplam.toFixed(2)} ₺</td></tr>`;
 }
 
-// Initial loads
-loadPersonelRapor();
-
-// ── Bağlantı Raporu ──────────────────────────────────────
-let baglantiPersonelId = null;
-
-function baglantiIsimAra(q) {
-  const oneriDiv = document.getElementById('baglantiIsimOneriler');
-  if (q.length < 1) { oneriDiv.style.display = 'none'; return; }
-  apiFetch(`/personeller/api/ara?q=${encodeURIComponent(q)}`).then(({ data }) => {
-    if (!data.personeller || data.personeller.length === 0) {
-      oneriDiv.style.display = 'none'; return;
-    }
-    oneriDiv.innerHTML = data.personeller.map(p =>
-      `<button type="button" class="list-group-item list-group-item-action py-1 px-2"
-        onclick="baglantiPersonelSec(${p.id}, '${p.ad.replace(/'/g, "\\'")}')">
-        ${p.ad}
-       </button>`
-    ).join('');
-    oneriDiv.style.display = 'block';
-  });
+async function loadDigerRaporlar() {
+  loadPersonelRapor();
 }
 
-function baglantiPersonelSec(id, ad) {
-  baglantiPersonelId = id;
-  document.getElementById('baglantiIsimArama').value = ad;
-  document.getElementById('baglantiIsimOneriler').style.display = 'none';
-  const durum = document.getElementById('baglantiSecilenDurum');
-  durum.innerHTML = `<span class="badge bg-success">✅ ${ad} seçildi</span>`;
-  durum.style.display = 'block';
-  loadBaglantiRapor();
-}
-
-function baglantiSifirla() {
-  baglantiPersonelId = null;
-  document.getElementById('baglantiIsimArama').value = '';
-  document.getElementById('baglantiIsimOneriler').style.display = 'none';
-  document.getElementById('baglantiSecilenDurum').style.display = 'none';
-  loadBaglantiRapor();
-}
-
-async function loadBaglantiRapor() {
-  const body = JSON.stringify({ personel_id: baglantiPersonelId });
-  const opts = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body };
-
-  // Siparişler
-  apiFetch('/raporlar/api/baglanti/siparisler', opts).then(({ data }) => {
-    const tbody = document.getElementById('baglantiSiparislerBody');
-    if (!data.basarili || !data.siparisler.length) {
-      tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-2">📭 Sipariş bulunamadı</td></tr>'; return;
-    }
-    tbody.innerHTML = data.siparisler.map(s => `<tr>
-      <td>${s.tarih}</td><td>${s.personel}</td><td>${s.toplama}</td>
-      <td><span class="badge bg-secondary">${s.siparis_no}</span></td>
-      <td>${s.urun_kodu}</td><td>${s.beden}</td>
-      <td><span class="badge ${s.durum === 'TAMAMLANDI' ? 'bg-success' : s.durum === 'BEKLEMEDE' ? 'bg-warning text-dark' : 'bg-danger'}">${s.durum}</span></td>
-    </tr>`).join('');
-  });
-
-  // Ürünler
-  apiFetch('/raporlar/api/baglanti/urunler', opts).then(({ data }) => {
-    const tbody = document.getElementById('baglantiUrunlerBody');
-    if (!data.basarili || !data.urunler.length) {
-      tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-2">📭 Ürün bulunamadı</td></tr>'; return;
-    }
-    tbody.innerHTML = data.urunler.map(u => `<tr>
-      <td>${u.tarih}</td><td>${u.personel}</td>
-      <td><span class="badge bg-primary-soft text-primary">${u.urun_kodu}</span></td>
-      <td>${u.toplama}</td><td>${u.beden}</td><td>${u.adet}</td>
-    </tr>`).join('');
-  });
-
-  // Kayıtlar
-  apiFetch('/raporlar/api/baglanti/kayitlar', opts).then(({ data }) => {
-    const tbody = document.getElementById('baglantiKayitlarBody');
-    if (!data.basarili || !data.kayitlar.length) {
-      tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-2">📭 Kayıt bulunamadı</td></tr>'; return;
-    }
-    tbody.innerHTML = data.kayitlar.map(k => `<tr>
-      <td>${k.tarih}</td><td>${k.personel}</td><td>${k.toplama}</td>
-      <td>${formatNumber(k.siparis_sayisi)}</td>
-      <td>${k.senkronizasyon_sayisi > 0 ? `<span class="badge bg-success">${k.senkronizasyon_sayisi}×</span>` : '<span class="badge bg-secondary">Manuel</span>'}</td>
-      <td>${k.senkronizasyon_tarihi}</td>
-    </tr>`).join('');
-  });
-}
-
-// Close personel dropdown when clicking outside
-document.addEventListener('click', function(e) {
-  if (!e.target.closest('#baglantiIsimArama') && !e.target.closest('#baglantiIsimOneriler')) {
-    document.getElementById('baglantiIsimOneriler').style.display = 'none';
-  }
-});
+// ─── İlk yükleme ───────────────────────────────────────────────────────────
+loadOzet();
+loadKayitlarRapor();
 </script>
 {% endblock %}
-
