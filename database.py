@@ -221,11 +221,14 @@ class Return(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     siparis_no = db.Column(db.String(120), nullable=False)
     tarih = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    urun_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=False)
+    urun_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=True)
+    urun_kodu_ham = db.Column(db.String(120), nullable=True)
     beden = db.Column(db.String(50), nullable=True)
     adet = db.Column(db.Integer, nullable=False, default=1)
     sebebi = db.Column(db.String(255), nullable=True)
-    toplama_id = db.Column(db.Integer, db.ForeignKey('toplamalar.id'), nullable=False)
+    toplama_id = db.Column(db.Integer, db.ForeignKey('toplamalar.id'), nullable=True)
+    durum = db.Column(db.String(50), default='BEKLEMEDE', nullable=False)
+    hata_sebebi = db.Column(db.Text, nullable=True)
     excel_yukleme_id = db.Column(db.Integer, db.ForeignKey('excel_uploads.id'), nullable=True)
 
     urun = db.relationship('Product', backref=db.backref('returns', lazy=True))
@@ -522,6 +525,48 @@ def veritabani_migrasyonu():
                 conn.execute(text("ALTER TABLE excel_uploads ADD COLUMN durum VARCHAR(50) DEFAULT 'YUKLENDI' NOT NULL"))
             if 'kontrol_tarihi' not in excel_cols:
                 conn.execute(text('ALTER TABLE excel_uploads ADD COLUMN kontrol_tarihi DATETIME'))
+
+        # returns tablosuna yeni sütunlar ekle (durum, hata_sebebi, urun_kodu_ham; urun_id/toplama_id nullable)
+        if 'returns' in existing_tables:
+            ret_cols = [c['name'] for c in inspector.get_columns('returns')]
+            needs_rebuild = 'urun_kodu_ham' not in ret_cols or 'durum' not in ret_cols or 'hata_sebebi' not in ret_cols
+            if needs_rebuild:
+                conn.execute(text('''
+                    CREATE TABLE returns_v2_new (
+                        id INTEGER NOT NULL PRIMARY KEY,
+                        siparis_no VARCHAR(120) NOT NULL,
+                        tarih DATETIME NOT NULL,
+                        urun_id INTEGER REFERENCES products(id),
+                        urun_kodu_ham VARCHAR(120),
+                        beden VARCHAR(50),
+                        adet INTEGER NOT NULL DEFAULT 1,
+                        sebebi VARCHAR(255),
+                        toplama_id INTEGER REFERENCES toplamalar(id),
+                        durum VARCHAR(50) NOT NULL DEFAULT 'BEKLEMEDE',
+                        hata_sebebi TEXT,
+                        excel_yukleme_id INTEGER REFERENCES excel_uploads(id)
+                    )
+                '''))
+                conn.execute(text('''
+                    INSERT INTO returns_v2_new
+                        (id, siparis_no, tarih, urun_id, urun_kodu_ham, beden, adet,
+                         sebebi, toplama_id, durum, hata_sebebi, excel_yukleme_id)
+                    SELECT id, siparis_no, tarih, urun_id, NULL, beden, adet,
+                           sebebi, toplama_id, 'BEKLEMEDE', NULL, excel_yukleme_id
+                    FROM returns
+                '''))
+                conn.execute(text('DROP TABLE returns'))
+                conn.execute(text('ALTER TABLE returns_v2_new RENAME TO returns'))
+                conn.execute(text('CREATE INDEX IF NOT EXISTS ix_return_siparis_no ON returns(siparis_no)'))
+                conn.execute(text('CREATE INDEX IF NOT EXISTS ix_return_tarih ON returns(tarih)'))
+                conn.execute(text('CREATE INDEX IF NOT EXISTS ix_return_toplama ON returns(toplama_id)'))
+            else:
+                if 'urun_kodu_ham' not in ret_cols:
+                    conn.execute(text('ALTER TABLE returns ADD COLUMN urun_kodu_ham VARCHAR(120)'))
+                if 'durum' not in ret_cols:
+                    conn.execute(text("ALTER TABLE returns ADD COLUMN durum VARCHAR(50) NOT NULL DEFAULT 'BEKLEMEDE'"))
+                if 'hata_sebebi' not in ret_cols:
+                    conn.execute(text('ALTER TABLE returns ADD COLUMN hata_sebebi TEXT'))
 
         # Yeni tablolar: adet_filtreleri ve kayit_ayrintilari
         if 'adet_filtreleri' not in existing_tables:
